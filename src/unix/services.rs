@@ -6,7 +6,8 @@ use super::{
 use crate::protocol::{self, CHUNK};
 use anyhow::{Result, bail, ensure};
 use std::{
-    fs::File,
+    collections::HashSet,
+    fs::{self, File},
     io::{self, Read, Write},
     net::{Shutdown, TcpStream},
     os::{
@@ -265,25 +266,45 @@ fn input(mut socket: UnixStream, mut stdin: File, v2: bool, pty: bool, pid: i32)
     }
 }
 
-fn shell(socket: UnixStream, args: ShellArgs, test: bool) -> Result<()> {
-    let shell = if test { "/bin/sh" } else { "/system/bin/sh" };
-    let mut command = Command::new(shell);
-    if !args.command.is_empty() {
-        command.args(["-c", &args.command]);
+fn append_classpath_entries(bytes: &[u8], out: &mut Vec<String>, seen: &mut HashSet<String>) {
+    let mut i = 0;
+    while i < bytes.len() {
+        let Some(start) = bytes[i..].iter().position(|b| *b == b'/').map(|p| i + p) else {
+            break;
+        };
+        let end = bytes[start..]
+            .iter()
+            .position(|b| *b == 0 || *b < 0x20)
+            .map(|p| start + p)
+            .unwrap_or(bytes.len());
+        let field = &bytes[start..end];
+        if field.ends_with(b".jar")
+            && let Ok(path) = std::str::from_utf8(field)
+            && seen.insert(path.to_owned())
+        {
+            out.push(path.to_owned());
+        }
+        i = end.saturating_add(1);
     }
+}
+
+fn classpath_from_pb(paths: &[&str]) -> Option<String> {
+    let mut entries = Vec::new();
+    let mut seen = HashSet::new();
+    for path in paths {
+        if let Ok(bytes) = fs::read(path) {
+            append_classpath_entries(&bytes, &mut entries, &mut seen);
+        }
+    }
+    (!entries.is_empty()).then(|| entries.join(":"))
+}
+
+fn android_shell_env(command: &mut Command, shell: &str, term: &str) {
     command
-        .env_clear()
-        .env(
-            "PATH",
-            if test {
-                "/usr/bin:/bin"
-            } else {
-                "/system/bin:/system/xbin"
-            },
-        )
-        .env("HOME", if test { "/tmp" } else { "/data/local/tmp" })
+        .env("PATH", "/product/bin:/apex/com.android.runtime/bin:/apex/com.android.art/bin:/apex/com.android.virt/bin:/system_ext/bin:/system/bin:/system/xbin:/odm/bin:/vendor/bin:/vendor/xbin")
+        .env("HOME", "/data/local/tmp")
         .env("SHELL", shell)
-        .env("TERM", &args.term)
+        .env("TERM", term)
         .env(
             "USER",
             if unsafe { libc::getuid() } == 0 {
@@ -292,7 +313,59 @@ fn shell(socket: UnixStream, args: ShellArgs, test: bool) -> Result<()> {
                 "shell"
             },
         )
-        .current_dir("/");
+        .env("LOGNAME", if unsafe { libc::getuid() } == 0 { "root" } else { "shell" })
+        .env("ANDROID_ROOT", "/system")
+        .env("ANDROID_DATA", "/data")
+        .env("ANDROID_STORAGE", "/storage")
+        .env("ANDROID_ASSETS", "/system/app")
+        .env("ANDROID_RUNTIME_ROOT", "/apex/com.android.runtime")
+        .env("ANDROID_ART_ROOT", "/apex/com.android.art")
+        .env("ANDROID_I18N_ROOT", "/apex/com.android.i18n")
+        .env("ANDROID_TZDATA_ROOT", "/apex/com.android.tzdata")
+        .env("EXTERNAL_STORAGE", "/sdcard")
+        .env("ASEC_MOUNTPOINT", "/mnt/asec")
+        .env("DOWNLOAD_CACHE", "/data/cache");
+
+    if let Some(classpath) = classpath_from_pb(&[
+        "/system/etc/classpaths/bootclasspath.pb",
+        "/system/etc/compatible/com.android.art/etc/classpaths/bootclasspath.pb",
+    ]) {
+        command.env("BOOTCLASSPATH", classpath.clone());
+        command.env("DEX2OATBOOTCLASSPATH", classpath);
+    }
+    if let Some(classpath) = classpath_from_pb(&[
+        "/system/etc/classpaths/systemserverclasspath.pb",
+        "/system/etc/compatible/com.android.art/etc/classpaths/systemserverclasspath.pb",
+    ]) {
+        command.env("SYSTEMSERVERCLASSPATH", classpath);
+    }
+}
+
+fn shell(socket: UnixStream, args: ShellArgs, test: bool) -> Result<()> {
+    let shell = if test { "/bin/sh" } else { "/system/bin/sh" };
+    let mut command = Command::new(shell);
+    if !args.command.is_empty() {
+        command.args(["-c", &args.command]);
+    }
+    command.env_clear();
+    if test {
+        command
+            .env("PATH", "/usr/bin:/bin")
+            .env("HOME", "/tmp")
+            .env("SHELL", shell)
+            .env("TERM", &args.term)
+            .env(
+                "USER",
+                if unsafe { libc::getuid() } == 0 {
+                    "root"
+                } else {
+                    "shell"
+                },
+            );
+    } else {
+        android_shell_env(&mut command, shell, &args.term);
+    }
+    command.current_dir("/");
     let mut master = None;
     let mut slave = None;
     if args.pty {
@@ -409,5 +482,23 @@ mod tests {
         assert!(!ShellArgs::parse("exec:id").unwrap().pty);
         assert!(ShellArgs::parse("tcpip:5555").is_err());
         assert!(ShellArgs::parse("reboot:recovery;id").is_err());
+    }
+
+    #[test]
+    fn extracts_length_prefixed_classpath_entries() {
+        let mut out = Vec::new();
+        let mut seen = HashSet::new();
+        append_classpath_entries(
+            b"\x0a\x1d/system/framework/framework.jar\x12\x1d/system/framework/framework.jar\0ignored\x0a\x16/apex/x/javalib/y.jar",
+            &mut out,
+            &mut seen,
+        );
+        assert_eq!(
+            out,
+            vec![
+                "/system/framework/framework.jar".to_string(),
+                "/apex/x/javalib/y.jar".to_string(),
+            ]
+        );
     }
 }
