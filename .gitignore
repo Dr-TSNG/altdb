@@ -1,5 +1,6 @@
 /target/
 /.cache/
+/.direnv/
 /.idea/
 /vendor/boringssl/
 /dist/
