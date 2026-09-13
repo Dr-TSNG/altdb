@@ -253,7 +253,11 @@ fn input(mut socket: UnixStream, mut stdin: File, v2: bool, pty: bool, pid: i32)
                     }
                     return Ok(());
                 }
-                5 if pty => resize(stdin.as_raw_fd(), &data)?,
+                5 => {
+                    if pty {
+                        resize(stdin.as_raw_fd(), &data)?;
+                    }
+                }
                 _ => bail!("invalid shell input channel"),
             }
         }
