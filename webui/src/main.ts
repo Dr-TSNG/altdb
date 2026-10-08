@@ -14,7 +14,6 @@ type Config = {
   port_mode: 'random' | 'fixed';
   fixed_port: number;
   allow_adb_root: boolean;
-  allow_shell_root: boolean;
 };
 type Host = { fingerprint: string; name: string; paired_at: number; last_connected: number | null };
 type Status = {
@@ -259,7 +258,6 @@ function populate(config: Config) {
   get<HTMLSelectElement>('port-mode').value = config.port_mode;
   get<HTMLInputElement>('fixed-port').value = String(config.fixed_port);
   get<HTMLInputElement>('allow-adb-root').checked = config.allow_adb_root;
-  get<HTMLInputElement>('allow-shell-root').checked = config.allow_shell_root;
   portField();
 }
 function portField() {
@@ -293,7 +291,6 @@ get('settings').addEventListener('submit', (event) => {
     port_mode: get<HTMLSelectElement>('port-mode').value as Config['port_mode'],
     fixed_port: port,
     allow_adb_root: get<HTMLInputElement>('allow-adb-root').checked,
-    allow_shell_root: get<HTMLInputElement>('allow-shell-root').checked,
   };
   void action({ op: 'configure', config });
 });

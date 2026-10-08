@@ -109,11 +109,15 @@ pub fn context(name: &str) -> Result<()> {
     Ok(())
 }
 /// Invoked only in a disposable local diagnostic process. It execs su after
-/// dropping to exactly the same shell identity and policy as a normal service.
+/// dropping to the normal shell service identity. Only the blocked diagnostic
+/// applies KSU_NO_NEW_PRIVS; normal shell services follow KernelSU authorization.
 pub fn probe_shell_su(allow: bool) -> Result<()> {
     use std::os::unix::process::CommandExt;
     ensure!(unsafe { libc::geteuid() } == 0, "probe requires root");
-    restrict_service(false, allow, false)?;
+    if !allow {
+        prevent_escalation()?;
+    }
+    restrict_service(false, false)?;
     let error = Command::new("/system/bin/su")
         .args(["-c", "id -u"])
         .env_clear()
@@ -201,7 +205,7 @@ pub fn restrict_network(test: bool) -> Result<()> {
     Ok(())
 }
 
-pub fn restrict_service(root: bool, allow_su: bool, test: bool) -> Result<()> {
+pub fn restrict_service(root: bool, test: bool) -> Result<()> {
     if test {
         ensure!(
             !cfg!(target_os = "android"),
@@ -212,9 +216,6 @@ pub fn restrict_service(root: bool, allow_su: bool, test: bool) -> Result<()> {
     if root {
         context("u:r:ksu:s0")?;
         return Ok(());
-    }
-    if !allow_su {
-        prevent_escalation()?;
     }
     // AOSP adbd supplemental groups, API 30 baseline.
     identity(

@@ -41,11 +41,10 @@ Use the WebUI to configure:
 
 - **Connection port:** Random by default, or a fixed port from `1024–65535`. An occupied fixed port is reported as an error.
 - **Allow adb root:** Off by default. When enabled, `adb root` switches services to root and all computers must reconnect. `adb unroot` or a service restart restores shell access.
-- **Allow shell to use su:** Off by default. When enabled, root access through `su` still depends on KernelSU's authorization for shell.
 - **Paired computers:** Revoking a computer disconnects it immediately. It must pair again to reconnect.
 - **Language:** Follows the system by default. A manual language choice is saved on the device.
 
-Connections use shell permissions by default. Changing permission switches disconnects existing sessions. Module upgrades preserve settings and pairing records; uninstalling removes the module's own data. CLI messages are in English.
+Connections use shell permissions by default. Shell access to `su` follows KernelSU's authorization for shell. Changing the adb root setting disconnects existing sessions. Module upgrades preserve settings and pairing records; uninstalling removes the module's own data. CLI messages are in English.
 
 ## Scope
 

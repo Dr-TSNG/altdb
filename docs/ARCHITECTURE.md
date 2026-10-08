@@ -17,7 +17,7 @@ root 管理进程创建监听套接字，检查接口、原生调试、配置、
 
 网络进程先设置 KernelSU 禁止提权，清空 capabilities / bounding set、降到 UID/GID 2000，再进入 `altdb_net` 域并设置 Linux no_new_privs。网络进程只有必要的已打开 socket 使用权限，不进入 shell / ksu，不读取持久化目录。TLS 私钥通过 root 私有 IPC 进入网络进程，磁盘副本仅 root 可读。
 
-普通服务采用 AOSP shell 基础附加组；在离开 ksu 域前完成 UID/GID 和 capabilities 降权，再进入 shell 域。`allow_shell_root=false` 时提前设置可继承的 KernelSU 标志；为 true 时不替 shell 授权。root 模式只改变服务身份，网络进程始终不变。
+普通服务采用 AOSP shell 基础附加组；在离开 ksu 域前完成 UID/GID 和 capabilities 降权，再进入 shell 域。shell 能否通过 `su` 提权由 KernelSU 的 shell 授权决定。root 模式只改变服务身份，网络进程始终保持禁止提权。
 
 官方 KernelSU 的 root context 为 `u:r:ksu:s0`。KernelSU 自带策略已将 ksu 设为 permissive，并允许其他 domain 使用其 FD、发送 SIGCHLD，以及进行 Unix stream socket 的 read/write/connectto/getopt/getattr；模块不重复添加这些规则。permissive 作用于执行操作的源域，不会自动免除 enforcing 网络进程对 ksu 标签 socket 的检查。管理进程创建并传递的 TCP/UDP socket，以及 Unix socket 的 setopt/ioctl/shutdown，仍由模块按具体操作授权；reverse 监听由 shell 创建，单独保留对 shell 标签 socket 的使用权限。依据：[KernelSU v3.2.5 域定义](https://github.com/tiann/KernelSU/blob/v3.2.5/kernel/selinux/selinux.h)、[内置策略](https://github.com/tiann/KernelSU/blob/v3.2.5/kernel/selinux/rules.c)。
 

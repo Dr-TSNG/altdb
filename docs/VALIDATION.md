@@ -90,9 +90,9 @@ README 已改为简洁英文模块说明，不包含构建内容。WebUI 支持�
 
 - Android 11 与较新 Android 版本，分别覆盖 4 KB 和 16 KB 页大小。
 - 官方 KernelSU 3.2.5+ 的版本/UAPI/禁止提权安装拒绝与启动复查，包括内核降级。
-- shell 已获 KernelSU root 授权时，altdb 的可继承禁止提权标志仍阻止 `su`；子 shell / exec / PTY 都应覆盖。
+- shell 的 `su` 提权遵循 KernelSU 授权；分别在授权和未授权时覆盖子 shell / exec / PTY。网络进程仍设置可继承的禁止提权标志。
 - enforcing SELinux 下网络进程 `u:r:altdb_net:s0`、UID 2000、capabilities 清零；普通服务 shell 域与附加组；root 服务 `u:r:ksu:s0`。检查继承的 ksu 标签 TCP/UDP/Unix socket 与 shell 标签 reverse socket 的实际 AVC。
-- 两个权限开关的四种组合、多电脑同时连接、收紧权限立即停止会话和 root 模式。
+- adb root 开关的启用和禁用、多电脑同时连接、关闭 adb root 立即停止会话和 root 模式；确认它不改变 KernelSU 的 shell 授权。
 - 真实 `install` / `install-multiple` / `uninstall`、logcat、reboot、shell v2 终端 resize、SYNC v1 客户端。
 - 原生 USB / 无线调试开启、关闭、adbd 残留/重启和关键状态不可读；暂停时监听、会话、转发及 mDNS 全部关闭。
 - 从未开启原生调试的冷启动，无需先开关调试即可确认状态；同一手机/网络下复测交互式 shell 输入延迟和新命令响应。
@@ -108,7 +108,7 @@ README 已改为简洁英文模块说明，不包含构建内容。WebUI 支持�
 
 回环版自动测试已验证该协议路径；真机仍需要验证 SELinux 与实际网络。
 
-### 2. 已授权 shell 仍不能突破 KernelSU 标志
+### 2. KernelSU 禁止提权标志与 shell 授权
 
 先在 KernelSU Manager **手动授权 shell**，然后从手机本地 root 终端执行：
 
@@ -116,9 +116,9 @@ README 已改为简洁英文模块说明，不包含构建内容。WebUI 支持�
 /data/adb/modules/altdb/bin/altdb doctor --verify-su-isolation
 ```
 
-命令在两个独立进程中使用与真实服务相同的 UID/GID、capabilities 和 shell SELinux 域：基线允许 su 必须得到 UID 0；设置 KSU_NO_NEW_PRIVS 后的 su 必须失败或不能得到 UID 0。只有两项均满足才返回 `ksu_no_new_privs_blocks_su: true`。命令不更改 KernelSU 的 shell 授权或模块配置。基线未获 root / 超时表示“前置条件未满足”，不等价于隔离成功。
+命令在两个独立进程中使用与普通服务相同的 UID/GID、capabilities 和 shell SELinux 域：基线允许 su 必须得到 UID 0；诊断进程额外设置 KSU_NO_NEW_PRIVS 后的 su 必须失败或不能得到 UID 0。只有两项均满足才返回 `ksu_no_new_privs_blocks_su: true`。普通 shell 服务不设置此标志，网络进程仍设置；该诊断验证内核标志，不替代网络进程实际身份和 SELinux 检查。命令不更改 KernelSU 的 shell 授权或模块配置。基线未获 root / 超时表示“前置条件未满足”，不等价于隔离成功。
 
-再经真实配对连接测试：两开关全关时 `adb shell id` 应为 UID 2000，`adb shell su -c id` 应拒绝；只允许 shell su 时结果取决于已有 KernelSU 授权；允许 adb root 后再执行 root，全部电脑断线，重连后服务 UID 0。执行 unroot、冲突恢复或服务重启后应再次为 UID 2000。
+再经真实配对连接测试：关闭 adb root 时 `adb shell id` 应为 UID 2000，`adb shell su -c id` 的结果取决于 KernelSU 的 shell 授权；允许 adb root 后再执行 root，全部电脑断线，重连后服务 UID 0。执行 unroot、冲突恢复或服务重启后应再次为 UID 2000，shell 使用 su 仍遵循 KernelSU 授权。
 
 ## 复现实验与记录
 

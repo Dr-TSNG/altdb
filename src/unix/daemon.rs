@@ -384,7 +384,6 @@ impl Daemon {
             &ServiceStart {
                 name: name.clone(),
                 root: self.root,
-                allow_su: self.store.config.allow_shell_root,
                 test: self.test,
                 bind,
             },

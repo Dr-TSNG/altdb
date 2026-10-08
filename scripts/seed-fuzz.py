@@ -18,7 +18,7 @@ for command, payload in [
     (folder / command.decode()).write_bytes(data)
 (folder / "shell").write_bytes(b"\0\x02\0\0\0\0\xff")
 (folder / "control").write_bytes(
-    b'{"op":"configure","config":{"enabled":true,"port_mode":"fixed","fixed_port":5555,"allow_adb_root":false,"allow_shell_root":false}}'
+    b'{"op":"configure","config":{"enabled":true,"port_mode":"fixed","fixed_port":5555,"allow_adb_root":false}}'
 )
 (folder / "dns-loop").write_bytes(b"\xc0\0")
 (folder / "host-key").write_bytes(

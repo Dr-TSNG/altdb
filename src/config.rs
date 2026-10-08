@@ -18,13 +18,11 @@ pub enum PortMode {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
-#[serde(deny_unknown_fields)]
 pub struct Config {
     pub enabled: bool,
     pub port_mode: PortMode,
     pub fixed_port: u16,
     pub allow_adb_root: bool,
-    pub allow_shell_root: bool,
 }
 
 impl Default for Config {
@@ -34,7 +32,6 @@ impl Default for Config {
             port_mode: PortMode::Random,
             fixed_port: 5555,
             allow_adb_root: false,
-            allow_shell_root: false,
         }
     }
 }
@@ -83,7 +80,7 @@ mod tests {
     fn safe_defaults() {
         let c = Config::default();
         assert_eq!(c.port(), 0);
-        assert!(!c.allow_adb_root && !c.allow_shell_root);
+        assert!(!c.allow_adb_root);
         assert!(serde_json::from_str::<Config>(r#"{"enabled":true}"#).is_err());
     }
     #[test]

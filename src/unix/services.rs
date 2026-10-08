@@ -41,7 +41,7 @@ pub fn run() -> Result<()> {
     ensure!(fds.len() == 1, "service requires one data descriptor");
     let mut stream: UnixStream = fds.remove(0).into();
     drop(bootstrap);
-    ksu::restrict_service(start.root, start.allow_su, start.test)?;
+    ksu::restrict_service(start.root, start.test)?;
     if start.bind {
         let (fd, spec) = network::reverse_listener(&start.name)?;
         ipc::send(stream.as_raw_fd(), &spec, &[fd.as_raw_fd()])?;
