@@ -1,5 +1,6 @@
 pub mod sync;
 use super::{
+    environment,
     ipc::{self, ServiceStart},
     ksu, network,
 };
@@ -272,6 +273,11 @@ fn input(mut socket: UnixStream, mut stdin: File, v2: bool, pty: bool, pid: i32)
 fn shell(socket: UnixStream, args: ShellArgs, test: bool) -> Result<()> {
     let shell = if test { "/bin/sh" } else { "/system/bin/sh" };
     let mut command = Command::new(shell);
+    let user = if unsafe { libc::getuid() } == 0 {
+        "root"
+    } else {
+        "shell"
+    };
     if !args.command.is_empty() {
         command.args(["-c", &args.command]);
     }
@@ -282,21 +288,17 @@ fn shell(socket: UnixStream, args: ShellArgs, test: bool) -> Result<()> {
             if test {
                 "/usr/bin:/bin"
             } else {
-                "/system/bin:/system/xbin"
+                environment::ANDROID_PATH
             },
         )
         .env("HOME", if test { "/tmp" } else { "/data/local/tmp" })
+        .env("TMPDIR", if test { "/tmp" } else { "/data/local/tmp" })
         .env("SHELL", shell)
         .env("TERM", &args.term)
-        .env(
-            "USER",
-            if unsafe { libc::getuid() } == 0 {
-                "root"
-            } else {
-                "shell"
-            },
-        )
+        .env("USER", user)
+        .env("LOGNAME", user)
         .current_dir("/");
+    environment::inherit_android_runtime(&mut command);
     let mut master = None;
     let mut slave = None;
     if args.pty {

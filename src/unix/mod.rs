@@ -1,4 +1,5 @@
 pub mod daemon;
+mod environment;
 pub mod ipc;
 pub mod ksu;
 pub mod mdns;

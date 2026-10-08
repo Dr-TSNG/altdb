@@ -6,6 +6,18 @@
 
 用户确认手机端问题已解决、已连接电脑。反馈未附完整 Android 版本、页大小、冷启动过程和延迟测量，以下专项验收不据此全部标记为通过。
 
+### 2026-10-08：shell 启动环境与 scrcpy
+
+在 Xiaomi 2512BPNDAC / Android 17、KernelSU 32667 / UAPI 5 上复现：旧版 shell 缺少 `ANDROID_DATA` 等变量，`app_process` 报 `ANDROID_DATA environment variable unset`，scrcpy 5.0.1 报 `Server connection failed`。修复 daemon → service → shell 的运行时环境白名单传递，并补齐系统 PATH、TMPDIR、LOGNAME；通过保留原看护进程的启动环境重启 daemon，设备运行修复后的二进制。
+
+- 真机 scrcpy 默认 reverse 路径、强制 `--force-adb-forward` 路径均完成限时录制。ffprobe 确认前者有 1200×2608 H.264 视频 29 帧，后者有同分辨率视频 24 帧及 Opus 音频 404 帧；录像为 `.cache/scrcpy-after.mkv`、`.cache/scrcpy-after-forward.mkv`。音频初始 timestamp 警告未阻止录制；未验证键鼠注入或音频听感。
+- 真机 shell/root 模式均保留 Android 目录、BOOTCLASSPATH、TMPDIR 和对应 USER/LOGNAME；测试后恢复 UID 2000 / shell。`ASH_STANDALONE`、`KSU` 未进入普通 shell。
+- 35 项 Rust 测试、严格 Clippy、Rustfmt、Ruff、Android ARM64 release 构建及 16 KB ELF 校验通过。
+- 新增原版 adb 回归覆盖普通 shell、PTY 和 exec-out：设备 runtime/classpath 值跨两次 exec 保持，KernelSU / loader / 任意测试变量不泄漏。完整回环回归通过，包括并发 shell、SYNC、转发、root/unroot、撤销和重启。
+- WSL 直接执行 `/mnt/d` 上的 debug 二进制时，并发 shell 回归出现退出码 255；将同一个二进制复制到 Linux `/tmp` 后，新增环境回归及完整原版 adb 回归全部通过。对照提交 `7927f51` 在 Linux `/tmp` 下也通过；此处不把 Windows 挂载目录上的失败归因于环境变量修复。
+
+本次真机测试替换模块中的二进制并重启 daemon，未执行整机冷启动或模拟软重启，也未据此补齐下方完整设备验收矩阵。
+
 ### IPv4、排版与模拟软重启更新
 
 连接、配对、接口发现和 mDNS 已统一为 IPv4；移除 IPv6 地址与 WebUI 的 scope 提示。Rust、C、TypeScript、HTML、CSS、JSON、Python 和 Shell 已整理缩进与换行，预览 JS 从 Python 字符串中移为独立文件，并加入格式配置。

@@ -109,6 +109,30 @@ with tempfile.TemporaryDirectory(prefix="altdb-interop-") as folder:
     pathlib.Path(environment["ANDROID_USER_HOME"]).mkdir()
     server_port = port()
     host = [adb, "-P", str(server_port)]
+    runtime_environment = {
+        "ANDROID_ROOT": "/system",
+        "ANDROID_DATA": "/data",
+        "ANDROID_ASSETS": "/system/app",
+        "ANDROID_STORAGE": "/storage",
+        "ANDROID_RUNTIME_ROOT": "/apex/com.android.runtime",
+        "ANDROID_ART_ROOT": "/apex/com.android.art",
+        "ANDROID_I18N_ROOT": "/apex/com.android.i18n",
+        "ANDROID_TZDATA_ROOT": "/apex/com.android.tzdata",
+        "EXTERNAL_STORAGE": "/sdcard",
+        "ASEC_MOUNTPOINT": "/mnt/asec",
+        "BOOTCLASSPATH": "/apex/test/core.jar:/system/framework/device-specific.jar",
+        "DEX2OATBOOTCLASSPATH": "/apex/test/core.jar",
+        "SYSTEMSERVERCLASSPATH": "/system/framework/services.jar",
+        "STANDALONE_SYSTEMSERVER_JARS": "/apex/test/service.jar",
+    }
+    excluded_environment = {
+        "ASH_STANDALONE": "1",
+        "KSU": "true",
+        "CLASSPATH": "/data/local/tmp/unrelated.jar",
+        "LD_LIBRARY_PATH": str(root),
+        "ALTDB_TEST_SECRET": "must-not-reach-client-shells",
+    }
+    daemon_environment = dict(os.environ, **runtime_environment, **excluded_environment)
     daemon = None
     echoes = []
 
@@ -136,7 +160,10 @@ with tempfile.TemporaryDirectory(prefix="altdb-interop-") as folder:
 
     def start():
         return subprocess.Popen(
-            [binary, "test-daemon", str(state)], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE
+            [binary, "test-daemon", str(state)],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            env=daemon_environment,
         )
 
     def connect(address):
@@ -164,6 +191,24 @@ with tempfile.TemporaryDirectory(prefix="altdb-interop-") as folder:
         until(lambda: ctl("status")["pairing"] is None)
         connect(address)
         print("PASS stock adb pairing / TLS / unknown-host rejection", flush=True)
+
+        # Exercise both exec boundaries, including raw and PTY shell variants.
+        for command in [("shell", "-T", "env"), ("shell", "-tt", "env"), ("exec-out", "env")]:
+            values = dict(
+                line.split("=", 1)
+                for line in run("-s", address, *command).stdout.decode().splitlines()
+                if "=" in line
+            )
+            for key, value in runtime_environment.items():
+                assert values.get(key) == value, (command, key, values.get(key))
+            assert not excluded_environment.keys() & values.keys(), values
+            assert values["TMPDIR"] == values["HOME"] == "/tmp", values
+            assert values["LOGNAME"] == values["USER"], values
+            assert values["PATH"] == "/usr/bin:/bin", values
+        print(
+            "PASS Android runtime environment survives service/shell without unrelated vars",
+            flush=True,
+        )
 
         # One persistent shell isolates input/response latency from command
         # startup. Keep binary payload checks; timings are reported, not used
@@ -315,7 +360,8 @@ with tempfile.TemporaryDirectory(prefix="altdb-interop-") as folder:
         time.sleep(1)
         assert not until(running)["root"]
         print(
-            "PASS global root policy / stable connection and port / unroot (policy only)", flush=True
+            "PASS global root policy / stable connection and port / unroot (policy only)",
+            flush=True,
         )
 
         fp = ctl("status")["hosts"][0]["fingerprint"]

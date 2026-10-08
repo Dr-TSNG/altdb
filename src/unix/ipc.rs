@@ -1,4 +1,4 @@
-use super::network::Endpoint;
+use super::{environment, network::Endpoint};
 use crate::{config::Host, crypto::Identity};
 use anyhow::{Result, ensure};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
@@ -193,6 +193,9 @@ pub fn spawn(mode: &str, fd: RawFd) -> Result<Child> {
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());
+    if mode == "service" {
+        environment::inherit_android_runtime(&mut cmd);
+    }
     #[cfg(not(target_os = "android"))]
     cmd.stderr(Stdio::inherit());
     // Only async-signal-safe syscalls in the fork-to-exec boundary.
