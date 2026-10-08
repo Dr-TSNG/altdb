@@ -1,11 +1,11 @@
 use anyhow::{Result, ensure};
 use serde::{Deserialize, Serialize};
-use socket2::{Domain, Protocol, SockAddr, Socket, Type};
+use socket2::{Domain, Protocol, SockAddr, SockFilter, Socket, Type};
 use std::{
     ffi::CStr,
     fs,
     net::{Ipv4Addr, SocketAddr, TcpListener},
-    os::fd::{FromRawFd, OwnedFd},
+    os::fd::{AsRawFd, FromRawFd, OwnedFd},
     path::Path,
 };
 
@@ -127,6 +127,37 @@ pub fn discover(test: bool) -> Result<Vec<Endpoint>> {
     Ok(result)
 }
 
+pub(super) fn restrict_ingress(socket: &Socket, index: u32) -> Result<()> {
+    // Locally originated traffic to the device's own IPs arrives via lo.
+    // Filter before TCP handles SYN so local scans cannot complete a handshake.
+    const SKF_AD_IFINDEX: u32 = (-0x1000i32 + 8) as u32;
+    socket.attach_filter(&[
+        SockFilter::new(0x20, 0, 0, SKF_AD_IFINDEX), // ld ifidx
+        SockFilter::new(0x15, 0, 1, index),          // jeq index, accept, drop
+        SockFilter::new(0x06, 0, 0, u32::MAX),       // accept the full packet
+        SockFilter::new(0x06, 0, 0, 0),              // drop
+    ])?;
+    #[cfg(target_os = "android")]
+    const SO_LOCK_FILTER: libc::c_int = 44;
+    #[cfg(target_os = "linux")]
+    use libc::SO_LOCK_FILTER;
+    let lock: libc::c_int = 1;
+    ensure!(
+        unsafe {
+            libc::setsockopt(
+                socket.as_raw_fd(),
+                libc::SOL_SOCKET,
+                SO_LOCK_FILTER,
+                (&lock as *const libc::c_int).cast(),
+                std::mem::size_of_val(&lock) as _,
+            )
+        } == 0,
+        "cannot lock ingress filter: {}",
+        std::io::Error::last_os_error()
+    );
+    Ok(())
+}
+
 pub fn listeners(
     addresses: &[Endpoint],
     port: u16,
@@ -143,6 +174,7 @@ pub fn listeners(
         socket.set_reuse_address(true)?;
         if !test {
             socket.bind_device(Some(ep.interface.as_bytes()))?;
+            restrict_ingress(&socket, ep.index)?;
         }
         socket.bind(&SockAddr::from(addr))?;
         socket.listen(16)?;

@@ -1,4 +1,4 @@
-use super::network::Endpoint;
+use super::network::{Endpoint, restrict_ingress};
 use anyhow::{Result, ensure};
 use socket2::{Domain, Protocol, SockAddr, Socket, Type};
 use std::{
@@ -27,10 +27,12 @@ pub fn sockets(endpoints: &[Endpoint], test: bool) -> Result<(Vec<Endpoint>, Vec
         socket.set_reuse_address(true)?;
         socket.set_reuse_port(true)?;
         socket.bind_device(Some(ep.interface.as_bytes()))?;
+        restrict_ingress(&socket, ep.index)?;
         socket.bind(&SockAddr::from(addr))?;
         socket.join_multicast_v4(&Ipv4Addr::new(224, 0, 0, 251), &ep.address)?;
         socket.set_multicast_if_v4(&ep.address)?;
         socket.set_multicast_ttl_v4(255)?;
+        socket.set_multicast_loop_v4(false)?;
         socket.set_nonblocking(true)?;
         specs.push(ep.clone());
         sockets.push(socket.into());
