@@ -11,6 +11,7 @@ chmod 0700 "$STATE" || exit 1
 [ ! -L "$STATE/service.lock" ] || exit 1
 exec 9>>"$STATE/service.lock" || exit 1
 flock -n 9 || exit 0
+rm -f "$STATE/service.stop" || exit 1
 
 PID=
 stopping() {
@@ -20,21 +21,23 @@ stopping() {
 }
 trap stopping TERM INT
 trap '' HUP
-while [ "$(getprop sys.boot_completed)" != 1 ]; do
-  if [ -f "$MODDIR/disable" ] || [ -f "$MODDIR/remove" ]; then
-    exit 0
+check_stop() {
+  if [ -f "$STATE/service.stop" ] || [ -f "$MODDIR/disable" ] || [ -f "$MODDIR/remove" ]; then
+    stopping
   fi
+}
+while [ "$(getprop sys.boot_completed)" != 1 ]; do
+  check_stop
   sleep 1
 done
 DELAY=1
 while [ ! -f "$MODDIR/disable" ] && [ ! -f "$MODDIR/remove" ]; do
+  check_stop
   START=$(date +%s)
   "$MODDIR/bin/altdb" daemon 9>&- >/dev/null 2>&1 &
   PID=$!
   while kill -0 "$PID" 2>/dev/null; do
-    if [ -f "$MODDIR/disable" ] || [ -f "$MODDIR/remove" ]; then
-      stopping
-    fi
+    check_stop
     sleep 1
   done
   wait "$PID"
@@ -46,7 +49,12 @@ while [ ! -f "$MODDIR/disable" ] && [ ! -f "$MODDIR/remove" ]; do
   esac
   NOW=$(date +%s)
   [ $((NOW - START)) -ge 60 ] && DELAY=1
-  sleep "$DELAY"
+  REMAINING=$DELAY
+  while [ "$REMAINING" -gt 0 ]; do
+    check_stop
+    sleep 1
+    REMAINING=$((REMAINING - 1))
+  done
   DELAY=$((DELAY * 2))
   [ "$DELAY" -gt 60 ] && DELAY=60
 done

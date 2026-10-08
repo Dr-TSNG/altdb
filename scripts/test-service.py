@@ -11,6 +11,7 @@ import os
 from pathlib import Path
 import select
 import shlex
+import shutil
 import signal
 import socket
 import subprocess
@@ -42,18 +43,22 @@ def main():
         state = root / "state"
         boot = root / "boot"
         starts = root / "starts"
-        bin_dir = root / "bin"
-        bin_dir.mkdir()
+        module = root / "module"
+        bin_dir = module / "bin"
+        bin_dir.mkdir(parents=True)
         boot.write_text("0\n")
-        script = Path(__file__).resolve().parents[1] / "module/service.sh"
-        source = script.read_text()
-        assert source.count("STATE=/data/adb/altdb") == 1
-        (root / "service.sh").write_text(
-            source.replace("STATE=/data/adb/altdb", f"STATE={shlex.quote(str(state))}")
-        )
+        scripts = Path(__file__).resolve().parents[1] / "module"
+        for name in ("service.sh", "emulated-soft-reboot.sh"):
+            source = (scripts / name).read_text()
+            assert source.count("STATE=/data/adb/altdb") == 1
+            (module / name).write_text(
+                source.replace("STATE=/data/adb/altdb", f"STATE={shlex.quote(str(state))}")
+            )
         (bin_dir / "getprop").write_text(f"#!/bin/sh\ncat {shlex.quote(str(boot))}\n")
         (bin_dir / "altdb").write_text(
             "#!/bin/sh\n"
+            f'if [ "$1" = ctl ]; then exec {shlex.quote(binary)} '
+            f'test-ctl {shlex.quote(str(state))} \'{{"op":"stop"}}\'; fi\n'
             # A daemon must not inherit the watchdog's lock descriptor.
             "[ ! -e /proc/self/fd/9 ] || exit 99\n"
             f"echo $$ >> {shlex.quote(str(starts))}\n"
@@ -74,10 +79,26 @@ def main():
 
         def launch():
             process = subprocess.Popen(
-                ["/bin/sh", str(root / "service.sh")], env=environment, start_new_session=True
+                ["/bin/sh", str(module / "service.sh")], env=environment, start_new_session=True
             )
             watchdogs.append(process)
             return process
+
+        def soft_reboot():
+            subprocess.run(
+                ["/bin/sh", str(module / "emulated-soft-reboot.sh")],
+                env=environment,
+                check=True,
+                timeout=25,
+            )
+
+        def locked():
+            return (
+                subprocess.run(
+                    ["flock", "-n", str(state / "service.lock"), "true"], timeout=2
+                ).returncode
+                == 1
+            )
 
         def ctl(op):
             result = subprocess.run(
@@ -112,12 +133,7 @@ def main():
         try:
             watchdog = launch()
             until(lambda: (state / "service.lock").exists())
-            until(
-                lambda: subprocess.run(
-                    ["flock", "-n", str(state / "service.lock"), "true"], timeout=2
-                ).returncode
-                == 1
-            )
+            until(locked)
             duplicates = [launch() for _ in range(4)]
             assert all(process.wait(timeout=3) == 0 for process in duplicates)
             assert not starts.exists() and watchdog.poll() is None
@@ -140,6 +156,7 @@ def main():
             )
             exchange(b"a")
             boot.write_text("0\n")
+            soft_reboot()
             watchdog.send_signal(signal.SIGHUP)
             duplicates = [launch() for _ in range(4)]
             assert all(process.wait(timeout=3) == 0 for process in duplicates)
@@ -164,18 +181,72 @@ def main():
             assert watchdog.poll() is None
             print("PASS crash restart and watchdog lock not inherited by daemon", flush=True)
 
-            (root / "disable").touch()
+            # Installing an update alone must not disconnect the running daemon.
+            (module / "update").touch()
+            old_pid = int(starts.read_text().splitlines()[-1])
+            time.sleep(2)
+            assert starts.read_text().splitlines()[-1] == str(old_pid)
+            assert running()
+            boot.write_text("0\n")
+            soft_reboot()
+            assert watchdog.wait(timeout=3) == 0
+            assert not Path(f"/proc/{old_pid}").exists()
+            assert not (state / "control.sock").exists()
+            assert not locked()
+
+            # KernelSU replaces the module directory after the pre-reboot hook.
+            retired = root / "retired"
+            module.rename(retired)
+            shutil.copytree(retired, module)
+            (module / "update").unlink()
+            watchdog = launch()
+            until(locked)
+            assert len(starts.read_text().splitlines()) == 2
+            boot.write_text("1\n")
+            status = until(running)
+            assert len(starts.read_text().splitlines()) == 3
+            address = status["endpoints"][0]
+            assert b"connected" in adb("connect", address)
+            assert adb("-s", address, "shell", "echo", "updated").strip() == b"updated"
+            print("PASS update stops old daemon/watchdog and replacement keeps pairing", flush=True)
+
+            (module / "disable").touch()
             assert watchdog.wait(timeout=10) == 0
             assert not (state / "control.sock").exists()
-            (root / "disable").unlink()
+            (module / "disable").unlink()
             watchdog = launch()
             until(running)
-            (root / "remove").touch()
+            (module / "remove").touch()
             assert watchdog.wait(timeout=10) == 0
             assert not (state / "control.sock").exists()
             print("PASS disable / re-enable / remove and automatic lock release", flush=True)
+
+            (module / "remove").unlink()
+            (module / "update").touch()
+            boot.write_text("0\n")
+            count = len(starts.read_text().splitlines())
+            watchdog = launch()
+            until(locked)
+            soft_reboot()
+            assert watchdog.wait(timeout=3) == 0
+            assert len(starts.read_text().splitlines()) == count
+            print("PASS update stops watchdog before boot completed", flush=True)
+
+            # There may be no control socket while the watchdog is backing off.
+            (bin_dir / "altdb").write_text(
+                '#!/bin/sh\n[ "$1" != ctl ] || exit 1\n'
+                f"echo $$ >> {shlex.quote(str(starts))}\nexit 1\n"
+            )
+            boot.write_text("1\n")
+            watchdog = launch()
+            until(lambda: len(starts.read_text().splitlines()) == count + 3)
+            soft_reboot()
+            assert watchdog.wait(timeout=3) == 0
+            assert len(starts.read_text().splitlines()) == count + 3
+            assert not locked()
+            print("PASS update stops watchdog during crash backoff", flush=True)
         finally:
-            (root / "disable").touch()
+            (module / "disable").touch()
             if session:
                 session.kill()
                 session.wait()

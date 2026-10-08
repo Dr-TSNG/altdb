@@ -56,7 +56,7 @@ python3 scripts/test-service.py --adb /path/to/platform-tools/adb --binary "targ
 
 互操作测试使用独立 adb server、临时主机密钥和 Linux 回环测试入口，不操作实际手机。`test-daemon` / `test-ctl` 不出现在 Android CLI 中；Android 权限入口也拒绝测试模式。
 
-`test-service.py` 在临时目录执行真实 service.sh，替换数据目录并模拟 getprop；覆盖开机等待期间的重复启动、运行时重置 boot_completed / HUP / 重复启动对同一 TLS shell 的影响、崩溃恢复及禁用/移除标记。它不模拟 Android 杀进程或网络重置，不能代替真机“模拟软重启”验证。
+`test-service.py` 在临时目录执行真实 service.sh 和 emulated-soft-reboot.sh，替换数据目录并模拟 getprop；覆盖开机等待期间的重复启动、未更新时软重启钩子 / boot_completed 重置 / HUP / 重复启动对同一 TLS shell 的影响、更新时旧 daemon 和看护脚本退出及模块目录替换后复用配对、开机等待和崩溃退避期间的更新停止，以及崩溃恢复和禁用/移除标记。它不模拟 Android 杀进程或网络重置，不能代替真机“模拟软重启”验证。
 
 给互操作命令添加 `--latency-only` 可单独测量持续 shell 的单字节往返（40 次，报告 p50/p95）和新命令启动时间（8 次，报告 p50）。结果用于同一环境的版本比较，不代表手机 Wi-Fi 延迟。
 
