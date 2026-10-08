@@ -311,13 +311,11 @@ with tempfile.TemporaryDirectory(prefix="altdb-interop-") as folder:
         time.sleep(1)
         status = until(running)
         assert status["root"] and status["endpoints"][0] == address
-        connect(address)
         run("-s", address, "unroot")
         time.sleep(1)
         assert not until(running)["root"]
-        connect(address)
         print(
-            "PASS global root policy / reconnect / stable port / unroot (policy only)", flush=True
+            "PASS global root policy / stable connection and port / unroot (policy only)", flush=True
         )
 
         fp = ctl("status")["hosts"][0]["fingerprint"]

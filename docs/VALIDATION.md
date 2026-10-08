@@ -118,7 +118,7 @@ README 已改为简洁英文模块说明，不包含构建内容。WebUI 支持�
 
 命令在两个独立进程中使用与普通服务相同的 UID/GID、capabilities 和 shell SELinux 域：基线允许 su 必须得到 UID 0；诊断进程额外设置 KSU_NO_NEW_PRIVS 后的 su 必须失败或不能得到 UID 0。只有两项均满足才返回 `ksu_no_new_privs_blocks_su: true`。普通 shell 服务不设置此标志，网络进程仍设置；该诊断验证内核标志，不替代网络进程实际身份和 SELinux 检查。命令不更改 KernelSU 的 shell 授权或模块配置。基线未获 root / 超时表示“前置条件未满足”，不等价于隔离成功。
 
-再经真实配对连接测试：关闭 adb root 时 `adb shell id` 应为 UID 2000，`adb shell su -c id` 的结果取决于 KernelSU 的 shell 授权；允许 adb root 后再执行 root，全部电脑断线，重连后服务 UID 0。执行 unroot、冲突恢复或服务重启后应再次为 UID 2000，shell 使用 su 仍遵循 KernelSU 授权。
+再经真实配对连接测试：关闭 adb root 时 `adb shell id` 应为 UID 2000，`adb shell su -c id` 的结果取决于 KernelSU 的 shell 授权；允许 adb root 后再执行 root，TLS 连接保持，新服务应为 UID 0。执行 unroot 后新服务应为 UID 2000，已有服务保持原权限；冲突恢复或服务重启后也应回到 shell 模式，shell 使用 su 仍遵循 KernelSU 授权。
 
 ## 复现实验与记录
 

@@ -89,7 +89,6 @@ struct Daemon {
     logs: VecDeque<Value>,
     epoch: u64,
     quit: bool,
-    rotate: Option<Instant>,
     retry_at: Instant,
     failures: u32,
 }
@@ -189,7 +188,6 @@ impl Daemon {
         }
         self.bundle = None;
         self.root = false;
-        self.rotate = None;
         if self.state != state || self.reason != reason {
             self.log(reason);
         }
@@ -478,20 +476,20 @@ impl Daemon {
                 if self.root == enable {
                     return Ok((
                         if enable {
-                            "adbd is already running as root\n"
+                            "new services already use root permissions\n"
                         } else {
-                            "adbd not running as root\n"
+                            "new services already use shell permissions\n"
                         }
                         .into(),
                         vec![],
                     ));
                 }
                 self.root = enable;
-                self.rotate = Some(Instant::now() + Duration::from_millis(500));
+                // The stock adb client waits for a disconnect if this says "restarting".
                 return Ok((
                     format!(
-                        "restarting adbd as {}\n",
-                        if enable { "root" } else { "non root" }
+                        "new services will use {} permissions\n",
+                        if enable { "root" } else { "shell" }
                     ),
                     vec![],
                 ));
@@ -574,7 +572,6 @@ pub fn run(path: &Path, test: bool) -> Result<()> {
         logs: VecDeque::new(),
         epoch: 0,
         quit: false,
-        rotate: None,
         retry_at: Instant::now(),
         failures: 0,
     };
@@ -622,13 +619,6 @@ pub fn run(path: &Path, test: bool) -> Result<()> {
         {
             d.pair_stop();
             d.log("Pairing window expired");
-        }
-        if d.rotate.is_some_and(|t| Instant::now() >= t) {
-            d.rotate = None;
-            d.stop_worker();
-            if d.start_worker().is_err() {
-                d.stop("error", "Service failed to start after permission change");
-            }
         }
         if let Some(worker) = &d.worker {
             let mut pfd = libc::pollfd {
