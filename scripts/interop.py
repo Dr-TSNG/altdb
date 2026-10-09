@@ -356,11 +356,20 @@ with tempfile.TemporaryDirectory(prefix="altdb-interop-") as folder:
         time.sleep(1)
         status = until(running)
         assert status["root"] and status["endpoints"][0] == address
+        for command in [("shell", "-T", "env"), ("shell", "-tt", "env"), ("exec-out", "env")]:
+            values = dict(
+                line.split("=", 1)
+                for line in run("-s", address, *command).stdout.decode().splitlines()
+                if "=" in line
+            )
+            assert values["PATH"] == "/usr/bin:/bin:/data/adb/ksu/bin", (command, values)
         run("-s", address, "unroot")
         time.sleep(1)
         assert not until(running)["root"]
+        assert run("-s", address, "shell", "printenv PATH").stdout.strip() == b"/usr/bin:/bin"
+        assert not run("-s", address, "shell", "printenv ENV", check=False).stdout
         print(
-            "PASS global root policy / stable connection and port / unroot (policy only)",
+            "PASS global root policy / root PATH / stable connection and port / unroot (policy only)",
             flush=True,
         )
 

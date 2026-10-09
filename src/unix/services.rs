@@ -67,7 +67,7 @@ pub fn run() -> Result<()> {
         return relay(stream, socket);
     }
     let args = ShellArgs::parse(&start.name)?;
-    shell(stream, args, start.test)
+    shell(stream, args, start.root, start.test)
 }
 
 trait Duplex: Read + Write + Send + 'static {
@@ -270,9 +270,14 @@ fn input(mut socket: UnixStream, mut stdin: File, v2: bool, pty: bool, pid: i32)
     }
 }
 
-fn shell(socket: UnixStream, args: ShellArgs, test: bool) -> Result<()> {
+fn shell(socket: UnixStream, args: ShellArgs, root: bool, test: bool) -> Result<()> {
     let shell = if test { "/bin/sh" } else { "/system/bin/sh" };
     let mut command = Command::new(shell);
+    let path = if test {
+        "/usr/bin:/bin"
+    } else {
+        environment::ANDROID_PATH
+    };
     let user = if unsafe { libc::getuid() } == 0 {
         "root"
     } else {
@@ -285,10 +290,10 @@ fn shell(socket: UnixStream, args: ShellArgs, test: bool) -> Result<()> {
         .env_clear()
         .env(
             "PATH",
-            if test {
-                "/usr/bin:/bin"
+            if root {
+                format!("{path}:/data/adb/ksu/bin")
             } else {
-                environment::ANDROID_PATH
+                path.to_owned()
             },
         )
         .env("HOME", if test { "/tmp" } else { "/data/local/tmp" })
@@ -299,6 +304,11 @@ fn shell(socket: UnixStream, args: ShellArgs, test: bool) -> Result<()> {
         .env("LOGNAME", user)
         .current_dir("/");
     environment::inherit_android_runtime(&mut command);
+    // Match KernelSU: ENV is sourced by interactive shells only. Do not
+    // prepend rc commands to shell -c / exec services or alter their output.
+    if root && std::path::Path::new("/data/adb/ksu/.ksurc").is_file() {
+        command.env("ENV", "/data/adb/ksu/.ksurc");
+    }
     let mut master = None;
     let mut slave = None;
     if args.pty {

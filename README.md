@@ -46,6 +46,8 @@ Use the WebUI to configure:
 
 Connections use shell permissions by default. Shell access to `su` follows KernelSU's authorization for shell. Changing the adb root setting in the WebUI disconnects existing sessions. Module upgrades preserve settings and pairing records; uninstalling removes the module's own data. CLI messages are in English.
 
+After `adb root`, new shells append `/data/adb/ksu/bin` to `PATH`. Interactive shells load `/data/adb/ksu/.ksurc` when it exists, matching KernelSU; non-interactive commands such as `adb shell command` and `adb exec-out command` do not load it. `adb unroot` restores the normal environment for new shells.
+
 ## Scope
 
 altdb provides local-network ADB only. USB transport, JDWP/IDE debugging, incremental installation, remount, verity and recovery sideload are not supported. Some system commands depend on device permissions.
