@@ -132,6 +132,9 @@ pub fn run() -> Result<()> {
         fds.len() == endpoints.len() + mdns.len(),
         "listener descriptor mismatch"
     );
+    // Read Android properties before entering the network SELinux domain,
+    // which deliberately has no access to the system property files.
+    let banner = transport::device_banner();
     ksu::restrict_network(test)?;
     let mdns_sockets: Vec<UdpSocket> = fds.drain(endpoints.len()..).map(Into::into).collect();
     let listeners: Vec<TcpListener> = fds.into_iter().map(Into::into).collect();
@@ -224,6 +227,7 @@ pub fn run() -> Result<()> {
                 let cancel = Arc::new(AtomicBool::new(false));
                 let signal = cancel.clone();
                 let identity = identity.clone();
+                let banner = banner.clone();
                 let b = broker.clone();
                 let id = next;
                 next = next
@@ -231,7 +235,8 @@ pub fn run() -> Result<()> {
                     .ok_or_else(|| anyhow::anyhow!("transport IDs exhausted"))?;
                 let allowed: Vec<_> = hosts.iter().map(|h| h.fingerprint.clone()).collect();
                 let handle = thread::spawn(move || {
-                    if let Err(error) = transport::run(socket, &identity, &allowed, b, id, signal)
+                    if let Err(error) =
+                        transport::run(socket, &identity, &allowed, banner, b, id, signal)
                         && test
                     {
                         eprintln!("test transport: {error:#}");

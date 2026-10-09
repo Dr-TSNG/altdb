@@ -101,10 +101,23 @@ struct Reverse {
     target: String,
 }
 
+pub fn device_banner() -> Vec<u8> {
+    let mut banner = String::from("device::");
+    for name in ["ro.product.name", "ro.product.model", "ro.product.device"] {
+        banner.push_str(name);
+        banner.push('=');
+        banner.push_str(&super::ksu::property(name).unwrap_or_default());
+        banner.push(';');
+    }
+    banner.push_str(&format!("features={FEATURES};\0"));
+    banner.into_bytes()
+}
+
 pub fn run(
     mut socket: TcpStream,
     identity: &Identity,
     allowed: &[String],
+    banner: Vec<u8>,
     broker: Broker,
     transport: u64,
     cancel: Arc<AtomicBool>,
@@ -131,10 +144,7 @@ pub fn run(
         fingerprint: fp,
     })?;
     let result = (|| -> Result<()> {
-        let banner = format!(
-            "device::ro.product.name=altdb;ro.product.model=altdb;ro.product.device=altdb;features={FEATURES};\0"
-        );
-        Packet::new(CNXN, VERSION, max as u32, banner.into_bytes()).write(&mut tls, false)?;
+        Packet::new(CNXN, VERSION, max as u32, banner).write(&mut tls, false)?;
         tls.flush()?;
         tls.nonblocking()?;
         let mut state = Connection {
