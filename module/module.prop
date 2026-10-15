@@ -1,6 +1,6 @@
 id=altdb
 name=altdb
-version=v0.2.0
-versionCode=6
+version=v0.2.1
+versionCode=7
 author=Nullptr
 description=Alternative adb server over local network
