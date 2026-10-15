@@ -1,0 +1,14 @@
+schemaVersion: 1
+id: altdb
+name: altdb
+summary: Alternative adb server over local network
+description: README.md
+license: Apache-2.0
+homepage: https://github.com/Dr-TSNG/altdb
+support: https://github.com/Dr-TSNG/altdb/issues
+tags: [tools]
+metamodule: false
+
+authors:
+  - name: Nullptr
+    url: https://github.com/Dr-TSNG
