@@ -13,6 +13,7 @@ import os
 import pathlib
 import select
 import shlex
+import signal
 import socket
 import struct
 import statistics
@@ -191,6 +192,36 @@ with tempfile.TemporaryDirectory(prefix="altdb-interop-") as folder:
         until(lambda: ctl("status")["pairing"] is None)
         connect(address)
         print("PASS stock adb pairing / TLS / unknown-host rejection", flush=True)
+
+        for _ in range(3):
+            until(lambda: ctl("status")["connections"] == 1)
+            run("disconnect", address)
+            until(lambda: ctl("status")["connections"] == 0)
+            connect(address)
+        until(lambda: ctl("status")["connections"] == 1)
+        print("PASS repeated disconnect/reconnect clears connection counts", flush=True)
+
+        run("disconnect", address)
+        until(lambda: ctl("status")["connections"] == 0)
+        connected = sum(row["message"] == "Paired host connected" for row in ctl("logs"))
+        # Let authentication time out in the worker while its supervisor cannot
+        # reply, then process the queued registration and its cleanup together.
+        daemon.send_signal(signal.SIGSTOP)
+        try:
+            paused_at = time.monotonic()
+            rejected = run("connect", address, check=False)
+            assert b"connected to" not in rejected.stdout, rejected.stdout
+            run("disconnect", address, check=False)
+            time.sleep(max(0, 12 - (time.monotonic() - paused_at)))
+        finally:
+            daemon.send_signal(signal.SIGCONT)
+        until(
+            lambda: sum(row["message"] == "Paired host connected" for row in ctl("logs"))
+            > connected
+        )
+        until(lambda: ctl("status")["connections"] == 0)
+        connect(address)
+        print("PASS authentication reply timeout leaves no stale connection", flush=True)
 
         # Exercise both exec boundaries, including raw and PTY shell variants.
         for command in [("shell", "-T", "env"), ("shell", "-tt", "env"), ("exec-out", "env")]:

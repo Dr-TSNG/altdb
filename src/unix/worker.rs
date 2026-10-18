@@ -58,9 +58,6 @@ impl Broker {
         if let Some((id, fp)) = &peer {
             self.0.peers.lock().unwrap().insert(*id, fp.clone());
         }
-        if let Request::Disconnected { transport } = &request {
-            self.0.peers.lock().unwrap().remove(transport);
-        }
         self.0.pending.lock().unwrap().insert(id, tx);
         let result = (|| -> Result<(String, Vec<OwnedFd>)> {
             {
@@ -82,6 +79,21 @@ impl Broker {
             self.0.peers.lock().unwrap().remove(&id);
         }
         result
+    }
+
+    fn disconnected(&self, transport: u64) -> Result<()> {
+        self.0.peers.lock().unwrap().remove(&transport);
+        let id = self.0.next.fetch_add(1, Ordering::Relaxed);
+        let _guard = self.0.send.lock().unwrap();
+        // The worker receives replies itself, so cleanup must not wait for one.
+        ipc::send(
+            self.0.fd.as_raw_fd(),
+            &Message::Request {
+                id,
+                request: Request::Disconnected { transport },
+            },
+            &[],
+        )
     }
 }
 
@@ -209,7 +221,11 @@ pub fn run() -> Result<()> {
                 _ => bail!("unexpected supervisor message"),
             }
         }
-        connections.retain(|_, r| !r.handle.is_finished());
+        // Reap every exit path, including a failed/timed-out authentication
+        // reply after the supervisor has already registered the connection.
+        for (id, _) in connections.extract_if(|_, r| r.handle.is_finished()) {
+            broker.disconnected(id)?;
+        }
         {
             let peers = broker.0.peers.lock().unwrap();
             for (id, r) in &connections {

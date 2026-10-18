@@ -55,6 +55,8 @@ SYNC 子进程按 shell/root 权限访问文件。路径最长 1024 字节，DAT
 
 ## 网络与生命周期
 
+ADB 连接启用 TCP keepalive（空闲 30 秒后探测、间隔 10 秒、三次未响应）及 60 秒 TCP_USER_TIMEOUT，清理网络突然中断或电脑离线后遗留的连接；正常空闲连接由 TCP 自动应答，不因没有 ADB 命令而断开。网络主循环统一回收退出的连接线程并通知管理进程清理计数和会话，覆盖认证回执失败等提前返回路径。
+
 接口由 getifaddrs 和 sysfs 类型、无线/物理设备信息筛选；只接受 IPv4，TCP 绑定具体地址和 SO_BINDTODEVICE。所有接口在同一启动周期使用相同通信端口，mDNS 仅发布 A 地址记录。新建监听失败时全部回滚。
 
 mDNS 监听按获准接口绑定 IPv4 UDP 5353，发布 `_adb-tls-connect._tcp` / `_adb-tls-pairing._tcp`、SRV、TXT、A；名称为持久 GUID。支持有界 DNS 压缩指针解析、周期公告、查询回应和 TTL 0 撤销。跨厂商 mDNS / 多网卡和电脑自动连接仍需实机互操作验收。

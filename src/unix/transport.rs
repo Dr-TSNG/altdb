@@ -5,6 +5,7 @@ use crate::{
     protocol::*,
 };
 use anyhow::{Result, bail, ensure};
+use socket2::{SockRef, TcpKeepalive};
 use std::{
     collections::{BTreeMap, VecDeque},
     io::{self, Cursor, Read, Write},
@@ -123,6 +124,16 @@ pub fn run(
     cancel: Arc<AtomicBool>,
 ) -> Result<()> {
     socket.set_nodelay(true)?;
+    let tcp = SockRef::from(&socket);
+    // Detect vanished peers without expiring healthy, idle adb connections.
+    tcp.set_tcp_keepalive(
+        &TcpKeepalive::new()
+            .with_time(Duration::from_secs(30))
+            .with_interval(Duration::from_secs(10))
+            .with_retries(3),
+    )?;
+    // Keepalive does not bound retransmission when data is already unacked.
+    tcp.set_tcp_user_timeout(Some(Duration::from_secs(60)))?;
     socket.set_read_timeout(Some(Duration::from_secs(5)))?;
     socket.set_write_timeout(Some(Duration::from_secs(5)))?;
     let hello = Packet::read(&mut socket, 4096, false)?;
@@ -143,54 +154,50 @@ pub fn run(
         transport,
         fingerprint: fp,
     })?;
-    let result = (|| -> Result<()> {
-        Packet::new(CNXN, VERSION, max as u32, banner).write(&mut tls, false)?;
-        tls.flush()?;
-        tls.nonblocking()?;
-        let mut state = Connection {
-            tls,
-            broker: broker.clone(),
-            transport,
-            max,
-            streams: BTreeMap::new(),
-            reverse: BTreeMap::new(),
-            next: 1,
-            input: vec![],
-        };
-        while !cancel.load(Ordering::Acquire) {
-            let mut work = false;
-            let mut buf = [0; CHUNK];
-            for _ in 0..16 {
-                match state.tls.read(&mut buf) {
-                    Ok(0) => return Ok(()),
-                    Ok(n) => {
-                        state.input.extend_from_slice(&buf[..n]);
-                        ensure!(
-                            state.input.len() <= MAX_PAYLOAD + 24 + CHUNK,
-                            "input queue limit"
-                        );
-                        work = true;
-                        state.parse()?;
-                    }
-                    Err(e) if e.kind() == io::ErrorKind::WouldBlock => break,
-                    Err(e) => return Err(e.into()),
+    Packet::new(CNXN, VERSION, max as u32, banner).write(&mut tls, false)?;
+    tls.flush()?;
+    tls.nonblocking()?;
+    let mut state = Connection {
+        tls,
+        broker,
+        transport,
+        max,
+        streams: BTreeMap::new(),
+        reverse: BTreeMap::new(),
+        next: 1,
+        input: vec![],
+    };
+    while !cancel.load(Ordering::Acquire) {
+        let mut work = false;
+        let mut buf = [0; CHUNK];
+        for _ in 0..16 {
+            match state.tls.read(&mut buf) {
+                Ok(0) => return Ok(()),
+                Ok(n) => {
+                    state.input.extend_from_slice(&buf[..n]);
+                    ensure!(
+                        state.input.len() <= MAX_PAYLOAD + 24 + CHUNK,
+                        "input queue limit"
+                    );
+                    work = true;
+                    state.parse()?;
                 }
-            }
-            work |= state.services()?;
-            work |= state.reverse_accept()?;
-            match state.tls.flush() {
-                Ok(()) => {}
-                Err(e) if e.kind() == io::ErrorKind::WouldBlock => {}
+                Err(e) if e.kind() == io::ErrorKind::WouldBlock => break,
                 Err(e) => return Err(e.into()),
             }
-            if !work {
-                state.wait_for_io()?;
-            }
         }
-        Ok(())
-    })();
-    let _ = broker.call(Request::Disconnected { transport });
-    result
+        work |= state.services()?;
+        work |= state.reverse_accept()?;
+        match state.tls.flush() {
+            Ok(()) => {}
+            Err(e) if e.kind() == io::ErrorKind::WouldBlock => {}
+            Err(e) => return Err(e.into()),
+        }
+        if !work {
+            state.wait_for_io()?;
+        }
+    }
+    Ok(())
 }
 
 struct Connection {
