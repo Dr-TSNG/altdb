@@ -19,13 +19,9 @@ if not target_dir.is_absolute():
     target_dir = ROOT / target_dir
 binary = target_dir / "aarch64-linux-android/release/altdb"
 version = tomllib.loads((ROOT / "Cargo.toml").read_text(encoding="utf-8"))["package"]["version"]
-module_prop = (ROOT / "module/module.prop").read_text(encoding="utf-8")
-properties = dict(
-    line.split("=", 1)
-    for line in module_prop.splitlines()
-    if "=" in line and not line.startswith("#")
+module_prop = (
+    (ROOT / "module/module.prop").read_text(encoding="utf-8").replace("@CARGO_VERSION@", version)
 )
-assert properties["version"] == f"v{version}", "Cargo and module versions must match"
 data = binary.read_bytes()
 assert data[:6] == b"\x7fELF\x02\x01", "Expected 64-bit little-endian ELF"
 assert struct.unpack_from("<H", data, 16)[0] == 3, "Expected PIE (ET_DYN) ELF"

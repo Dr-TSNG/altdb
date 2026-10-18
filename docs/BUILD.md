@@ -15,7 +15,7 @@ python scripts/build.py --binary-only
 
 NDK 位于 Android Studio 默认 SDK 目录时无需设置路径；自定义 SDK 可设置 `ANDROID_HOME`，指定某个 NDK 可设置标准变量 `ANDROID_NDK_HOME`。无需指定 clang、linker 或 NDK 宿主子目录，原有 `ALTDB_NDK` 不再使用。[cargo-ndk 使用说明](https://github.com/bbqsrc/cargo-ndk/tree/v4.1.2)
 
-需要完整模块时，再安装 Node.js 24 并运行 `python scripts/build.py`（Unix 也可用 `bash scripts/build.sh`）。它按锁文件构建 WebUI，生成 `dist/altdb-v0.1.3-arm64.zip` 及 `.zip.sha256`。包名从 Cargo 版本读取，并检查模块版本一致；支持通过 `CARGO_TARGET_DIR` 指定构建目录。ZIP 不包含 LICENSE、NOTICE 或依赖许可证目录，`scripts` 中没有 `.ps1`。
+需要完整模块时，再安装 Node.js 24 并运行 `python scripts/build.py`（Unix 也可用 `bash scripts/build.sh`）。它按锁文件构建 WebUI，生成 `dist/altdb-v0.1.3-arm64.zip` 及 `.zip.sha256`。包名和模块 `version` 统一从 `Cargo.toml` 的包版本生成，保留 `v` 前缀；支持通过 `CARGO_TARGET_DIR` 指定构建目录。ZIP 不包含 LICENSE、NOTICE 或依赖许可证目录，`scripts` 中没有 `.ps1`。
 
 模块 `versionCode` 在打包时取 `git rev-list --count HEAD`，不再手工递增。打包需要完整 Git 历史；浅克隆先运行 `git fetch --unshallow`。
 
