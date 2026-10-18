@@ -248,6 +248,11 @@ impl Daemon {
         match request {
             Control::Status => {}
             Control::Logs => return Ok(json!(self.logs)),
+            Control::Toggle => {
+                let mut config = self.store.config.clone();
+                config.enabled = !config.enabled;
+                return self.control(Control::Configure { config });
+            }
             Control::PairStart => {
                 ensure!(self.state == "running", "Service is not running");
                 ensure!(
@@ -669,7 +674,7 @@ pub fn run(path: &Path, test: bool) -> Result<()> {
         {
             property_check = Instant::now();
             if !d.store.config.enabled {
-                d.stop("disabled", "Disabled in WebUI");
+                d.stop("disabled", "Disabled in settings");
             } else {
                 let (reason, waiting_settings) = if test {
                     (None, false)

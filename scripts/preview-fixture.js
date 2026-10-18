@@ -51,7 +51,7 @@ window.ksu = {
         if (request.op === 'configure') {
             fixture.config = request.config;
             fixture.state = request.config.enabled ? 'running' : 'disabled';
-            fixture.reason = request.config.enabled ? '' : 'Disabled in WebUI';
+            fixture.reason = request.config.enabled ? '' : 'Disabled in settings';
         }
         if (request.op === 'revoke')
             fixture.hosts = fixture.hosts.filter((h) => h.fingerprint !== request.fingerprint);

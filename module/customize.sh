@@ -10,6 +10,7 @@ esac
 set_perm "$MODPATH/bin/altdb" 0 0 0755
 "$MODPATH/bin/altdb" doctor || abort "KernelSU kernel/UAPI/privilege restriction check failed"
 set_perm "$MODPATH/service.sh" 0 0 0755
+set_perm "$MODPATH/action.sh" 0 0 0755
 set_perm "$MODPATH/emulated-soft-reboot.sh" 0 0 0755
 set_perm "$MODPATH/hotinstall.sh" 0 0 0755
 set_perm "$MODPATH/uninstall.sh" 0 0 0755

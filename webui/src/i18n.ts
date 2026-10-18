@@ -180,7 +180,7 @@ export const backendMessages: Record<string, string> = {
   'Service started': '服务已启动',
   'Network worker communication failed': '网络进程通信失败',
   'Network worker exited; check SELinux and KernelSU': '网络进程已退出，请检查 SELinux 与 KernelSU',
-  'Disabled in WebUI': '已在 WebUI 中停用',
+  'Disabled in settings': '已在设置中停用',
   'Cannot read system debugging state; service paused: {error}':
     '无法读取系统调试状态，服务已暂停：{error}',
   'Waiting for Wi-Fi, hotspot or Ethernet': '等待 Wi-Fi、热点或有线局域网',

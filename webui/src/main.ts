@@ -162,6 +162,7 @@ function commands(id: string, addresses: string[], verb: string) {
   }
 }
 function render(status: Status) {
+  const enabledChanged = current?.config.enabled !== status.config.enabled;
   current = status;
   get('state').textContent = unavailable
     ? t('unavailable')
@@ -195,6 +196,8 @@ function render(status: Status) {
   if (!initialized) {
     populate(status.config);
     initialized = true;
+  } else if (enabledChanged) {
+    get<HTMLInputElement>('enabled').checked = status.config.enabled;
   }
   const signature = JSON.stringify([locale, status.hosts]);
   if (signature !== hostSignature) {

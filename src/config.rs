@@ -73,6 +73,7 @@ pub struct Host {
 pub enum Control {
     Status,
     Configure { config: Config },
+    Toggle,
     PairStart,
     PairStop,
     Revoke { fingerprint: String },

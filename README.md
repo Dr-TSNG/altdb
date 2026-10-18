@@ -37,6 +37,8 @@ On later connections, use `adb connect` directly. Paired computers may also reco
 
 ## Settings and permissions
 
+The module's **Action** button toggles altdb on or off and saves the setting, just like the WebUI switch. Turning it off disconnects current sessions; system debugging still takes priority when it is on. The CLI equivalent is `altdb ctl toggle`.
+
 Use the WebUI to configure:
 
 - **Connection port:** Random by default, or a fixed port from `1024–65535`. An occupied fixed port is reported as an error.

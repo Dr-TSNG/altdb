@@ -438,8 +438,14 @@ with tempfile.TemporaryDirectory(prefix="altdb-interop-") as folder:
         config.update(port_mode="random", enabled=False)
         ctl("configure", config=config)
         until(lambda: ctl("status")["state"] == "disabled")
-        config["enabled"] = True
-        ctl("configure", config=config)
+        enabled = ctl("toggle")
+        assert enabled["config"] == dict(config, enabled=True)
+        until(running)
+        disabled = ctl("toggle")
+        assert disabled["config"] == config
+        until(lambda: ctl("status")["state"] == "disabled")
+        assert json.loads((state / "config.json").read_text()) == config
+        ctl("toggle")
         until(running)
         assert all(pairing["code"] not in row["message"] for row in ctl("logs"))
         print(

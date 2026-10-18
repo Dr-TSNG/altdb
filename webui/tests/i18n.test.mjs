@@ -38,7 +38,7 @@ test('dynamic values remain literal in either language', () => {
     translate('last_connected', 'en', { date: '$& <script>' }),
     'Last connected: $& <script>',
   );
-  assert.equal(translateBackend('Disabled in WebUI', 'zh-CN'), '已在 WebUI 中停用');
+  assert.equal(translateBackend('Disabled in settings', 'zh-CN'), '已在设置中停用');
   assert.equal(translateBackend('Service started', 'en'), 'Service started');
   assert.equal(
     translateBackend('Unknown diagnostic $& <script>', 'zh-CN'),

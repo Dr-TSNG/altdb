@@ -18,7 +18,7 @@ fn run() -> Result<()> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.is_empty() || args[0] == "--help" {
         println!(
-            "altdb {}\n  daemon\n  ctl <status|logs|pair-start|pair-stop|stop>\n  ctl --request <base64url-json>\n  doctor",
+            "altdb {}\n  daemon\n  ctl <status|logs|pair-start|pair-stop|toggle|stop>\n  ctl --request <base64url-json>\n  doctor",
             env!("CARGO_PKG_VERSION")
         );
         return Ok(());
@@ -96,12 +96,20 @@ fn run() -> Result<()> {
                     "logs" => Control::Logs,
                     "pair-start" => Control::PairStart,
                     "pair-stop" => Control::PairStop,
+                    "toggle" => Control::Toggle,
                     "stop" => Control::Stop,
                     _ => bail!("unsupported control operation"),
                 }
             };
             let reply = daemon::control(path, &request)?;
-            println!("{reply}");
+            if args[1] == "toggle" && reply["ok"].as_bool() == Some(true) {
+                let enabled = reply["data"]["config"]["enabled"]
+                    .as_bool()
+                    .ok_or_else(|| anyhow::anyhow!("invalid toggle response"))?;
+                println!("altdb {}", if enabled { "enabled" } else { "disabled" });
+            } else {
+                println!("{reply}");
+            }
             ensure!(
                 reply["ok"].as_bool() == Some(true),
                 "control operation failed"
