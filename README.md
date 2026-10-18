@@ -22,7 +22,7 @@ System adbd and its existing authorizations are left untouched.
 
 ## Getting started
 
-1. Install the module ZIP in KernelSU Manager and restart the phone.
+1. Install the module ZIP in KernelSU Manager. With hot install support it starts immediately; otherwise restart the phone as prompted.
 2. Turn off system USB debugging and wireless debugging.
 3. Open the module WebUI, wait for the service to start, then select **Start pairing**.
 4. Run the commands shown in the WebUI on your computer. Enter the six-digit code when prompted:
@@ -46,6 +46,8 @@ Use the WebUI to configure:
 - **Language:** Follows the system by default. A manual language choice is saved on the device.
 
 Connections use shell permissions by default. Shell access to `su` follows KernelSU's authorization for shell. Changing the adb root setting in the WebUI disconnects existing sessions. Module upgrades preserve settings and pairing records; uninstalling removes the module's own data. CLI messages are in English.
+
+On KernelSU versions with hot install support, installing or updating altdb starts the new version without rebooting. An update restarts the service and disconnects existing sessions; paired computers can reconnect without pairing again. Older KernelSU versions apply the module after a reboot.
 
 After `adb root`, new shells append `/data/adb/ksu/bin` to `PATH`. Interactive shells load `/data/adb/ksu/.ksurc` when it exists, matching KernelSU; non-interactive commands such as `adb shell command` and `adb exec-out command` do not load it. `adb unroot` restores the normal environment for new shells.
 

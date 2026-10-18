@@ -71,7 +71,9 @@ mDNS 监听按获准接口绑定 IPv4 UDP 5353，发布 `_adb-tls-connect._tcp` 
 
 配置和主机列表修改采用私有同目录临时文件、fsync 和 rename；内存配置在保存成功后更新。daemon 与 service.sh 分别持有 daemon.lock / service.lock 的 flock。脚本在等待 boot_completed 前取得锁，重复调用直接退出；锁放在持久数据目录，避免模块更新替换目录后产生第二个看护进程。daemon 不继承脚本锁，崩溃后由原看护进程退避重启；HUP 不停止看护进程。禁用/卸载标记及 TERM/INT 会触发停止，进程退出自动释放锁，无需删除锁文件；模块不覆盖系统文件。
 
-[KernelSU 的软重启流程](https://github.com/tiann/KernelSU/blob/main/userspace/ksud/src/soft_reboot.rs)在替换待更新模块前执行 `emulated-soft-reboot.sh`。没有 `update` 标记时直接返回，保留 daemon 和现有会话；有标记时写入持久目录中的 `service.stop`，通过 `ctl stop` 请求 daemon 清理退出，并等待看护脚本和 daemon 的锁释放。看护脚本在等待开机、运行和崩溃退避期间均响应停止请求，新看护脚本取得锁后才清除该请求。仅安装更新不会立即停止服务。首次从不含此钩子的旧版本升级时，应完整重启一次，使后续软重启能调用已安装的钩子。
+安装器提供 `KSU_HAS_HOT_INSTALL=true` 时，customize.sh 请求热安装并指定 hotinstall.sh。KernelSU 换入新模块目录、加载 sepolicy.rule 后执行钩子；钩子强制停止旧 daemon 和看护脚本，等待两个持久锁释放，再以独立标准输入输出后台启动新版 service.sh。停止阶段的 CLI 限时五秒，两个锁共用二十秒等待预算，留在上游三十秒执行预算内。热安装会断开现有会话，配置、身份和配对记录保留；不支持热安装的安装器继续走重启流程。接口依据：[KernelSU 热安装提交](https://github.com/tiann/KernelSU/commit/200818cabf8ff8ba857dee068c5fae5ae63ae6aa)。
+
+[KernelSU 的软重启流程](https://github.com/tiann/KernelSU/blob/main/userspace/ksud/src/soft_reboot.rs)在替换待更新模块前执行 `emulated-soft-reboot.sh`。没有 `update` 标记时直接返回，保留 daemon 和现有会话；有标记时写入持久目录中的 `service.stop`，通过 `ctl stop` 请求 daemon 清理退出，并等待看护脚本和 daemon 的锁释放。看护脚本在等待开机、运行和崩溃退避期间均响应停止请求，新看护脚本取得锁后才清除该请求。走重启更新路径时，仅安装更新不会立即停止服务。不支持热安装时，首次从不含此钩子的旧版本升级应完整重启一次，使后续软重启能调用已安装的钩子。
 
 ## 代码导航
 

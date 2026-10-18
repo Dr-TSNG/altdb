@@ -54,6 +54,7 @@ def main():
             (module / name).write_text(
                 source.replace("STATE=/data/adb/altdb", f"STATE={shlex.quote(str(state))}")
             )
+        shutil.copyfile(scripts / "hotinstall.sh", module / "hotinstall.sh")
         (bin_dir / "getprop").write_text(f"#!/bin/sh\ncat {shlex.quote(str(boot))}\n")
         (bin_dir / "altdb").write_text(
             "#!/bin/sh\n"
@@ -75,6 +76,7 @@ def main():
             adb_port = probe.getsockname()[1]
         host = [str(args.adb.resolve()), "-P", str(adb_port)]
         watchdogs = []
+        hot_installs = []
         session = None
 
         def launch():
@@ -91,6 +93,18 @@ def main():
                 check=True,
                 timeout=25,
             )
+
+        def hot_install():
+            process = subprocess.Popen(
+                ["/bin/sh", str(module / "hotinstall.sh")],
+                env=environment,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                start_new_session=True,
+            )
+            hot_installs.append(process)
+            output, _ = process.communicate(timeout=30)
+            assert process.returncode == 0, output.decode(errors="replace")
 
         def locked():
             return (
@@ -222,6 +236,58 @@ def main():
             print("PASS disable / re-enable / remove and automatic lock release", flush=True)
 
             (module / "remove").unlink()
+            count = len(starts.read_text().splitlines())
+            hot_install()
+            status = until(running)
+            assert len(starts.read_text().splitlines()) == count + 1
+            fingerprint = status["hosts"][0]["fingerprint"]
+            old_pid = int(starts.read_text().splitlines()[-1])
+            address = status["endpoints"][0]
+            assert b"connected" in adb("connect", address)
+            session = subprocess.Popen(
+                host + ["-s", address, "shell", "-T", "cat"],
+                env=environment,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                bufsize=0,
+            )
+            exchange(b"h")
+            print("PASS hot install starts a stopped service", flush=True)
+
+            # Hot install swaps directories before running the hook and leaves
+            # no update flag. The new hook must still stop the old processes.
+            boot.write_text("0\n")
+            module.rename(root / "hot-retired")
+            shutil.copytree(root / "hot-retired", module)
+            assert not (module / "update").exists()
+            hot_install()
+            session.wait(timeout=5)
+            session.stdin.close()
+            session.stdout.close()
+            session = None
+            assert not Path(f"/proc/{old_pid}").exists()
+            assert not (state / "control.sock").exists()
+            until(locked)
+            assert len(starts.read_text().splitlines()) == count + 1
+            boot.write_text("1\n")
+            status = until(running)
+            assert len(starts.read_text().splitlines()) == count + 2
+            assert status["hosts"][0]["fingerprint"] == fingerprint
+            duplicate = launch()
+            assert duplicate.wait(timeout=3) == 0
+            address = status["endpoints"][0]
+            assert b"connected" in adb("connect", address)
+            assert adb("-s", address, "shell", "printf hot-updated") == b"hot-updated"
+            (module / "disable").touch()
+            until(lambda: not (state / "control.sock").exists())
+            until(lambda: not locked())
+            (module / "disable").unlink()
+            print(
+                "PASS hot replacement stops old shell/watchdog, preserves pairing and starts once",
+                flush=True,
+            )
+
             (module / "update").touch()
             boot.write_text("0\n")
             count = len(starts.read_text().splitlines())
@@ -254,6 +320,12 @@ def main():
                 if process.poll() is None:
                     process.terminate()
                     process.wait(timeout=10)
+            for process in hot_installs:
+                try:
+                    os.killpg(process.pid, signal.SIGTERM)
+                except ProcessLookupError:
+                    pass
+                process.wait(timeout=10)
             subprocess.run(host + ["kill-server"], env=environment, capture_output=True, timeout=10)
 
 

@@ -25,7 +25,7 @@ python scripts/build.py flash --reboot
 python scripts/build.py flash -s 192.168.1.2:5555 --reboot
 ```
 
-`flash` 始终先完整构建，上传本次生成的 ZIP，再调用 KernelSU 的 `ksud module install`；命令的 stdout / stderr 合并后实时转发到当前终端或 IDE 输出窗口。默认不重启，`--reboot` 仅在安装成功后执行普通重启。它会清理本次上传的临时 ZIP，安装失败不会重启。`--binary-only` 不能与 `flash` 同用。
+`flash` 始终先完整构建，上传本次生成的 ZIP，再调用 KernelSU 的 `ksud module install`；命令的 stdout / stderr 合并后实时转发到当前终端或 IDE 输出窗口。支持热安装的 KernelSU 会立即启动新版 altdb，并断开旧会话；旧版或上游回退情形按安装器提示重启。默认不重启，`--reboot` 仅在安装成功后执行普通重启。它会清理本次上传的临时 ZIP，安装失败不会重启。`--binary-only` 不能与 `flash` 同用。
 
 也可直接运行等价的 binary 构建命令：
 

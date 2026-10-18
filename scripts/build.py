@@ -49,7 +49,10 @@ def flash(adb, archive, reboot):
         print("Module installed; rebooting device.", flush=True)
         run(*su("/system/bin/reboot"))
     else:
-        print("Module installed. Reboot the device to apply the update.", flush=True)
+        print(
+            "Module installed. Follow the installer's instructions if a reboot is required.",
+            flush=True,
+        )
 
 
 def main():
@@ -88,7 +91,9 @@ def main():
         run(sys.executable, ROOT / "scripts/package.py")
     if args.action == "flash":
         adb = ["adb"] + (["-s", args.serial] if args.serial else [])
-        version = tomllib.loads((ROOT / "Cargo.toml").read_text(encoding="utf-8"))["package"]["version"]
+        version = tomllib.loads((ROOT / "Cargo.toml").read_text(encoding="utf-8"))["package"][
+            "version"
+        ]
         flash(adb, ROOT / f"dist/altdb-v{version}-arm64.zip", args.reboot)
 
 

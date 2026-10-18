@@ -3,7 +3,7 @@ MODDIR=${0%/*}
 
 # KernelSU calls this before applying modules_update. An unchanged module keeps
 # its watchdog, daemon, listening port and existing sessions alive.
-[ -f "$MODDIR/update" ] || exit 0
+[ -f "$MODDIR/update" ] || [ "$1" = --force ] || exit 0
 
 umask 077
 STATE=/data/adb/altdb
@@ -16,13 +16,15 @@ done
 # Also stop a watchdog waiting for boot or backing off after a crash. Leave the
 # request in place until the next watchdog owns service.lock.
 : >"$STATE/service.stop" || exit 1
-"$MODDIR/bin/altdb" ctl stop >/dev/null 2>&1
+# Hot install scripts have a 30-second budget. Bound the CLI call and share
+# the remaining wait budget across both locks.
+timeout 5 "$MODDIR/bin/altdb" ctl stop >/dev/null 2>&1
 
 # ctl stop acknowledges the request before shutdown finishes. Wait for both
 # owners to exit so the new service cannot lose the race for either lock.
 # BusyBox flock has no timeout option.
+LEFT=20
 wait_lock() {
-  LEFT=10
   until flock -n "$1"; do
     [ "$LEFT" -gt 0 ] || return 1
     sleep 1
