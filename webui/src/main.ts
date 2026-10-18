@@ -13,6 +13,7 @@ type Config = {
   enabled: boolean;
   port_mode: 'random' | 'fixed';
   fixed_port: number;
+  mdns_enabled: boolean;
   allow_adb_root: boolean;
 };
 type Host = { fingerprint: string; name: string; paired_at: number; last_connected: number | null };
@@ -174,6 +175,9 @@ function render(status: Status) {
     : t('tls_only');
   get('version').textContent = status.version;
   get('connections').textContent = String(status.connections);
+  get('connection-hint').textContent = t(
+    status.config.mdns_enabled ? 'connection_hint' : 'connection_manual_hint',
+  );
   get('host-count').textContent = String(status.hosts.length);
   commands('endpoints', status.endpoints, 'connect');
   get('pair-panel').hidden = !status.pairing;
@@ -257,6 +261,7 @@ function populate(config: Config) {
   get<HTMLInputElement>('enabled').checked = config.enabled;
   get<HTMLSelectElement>('port-mode').value = config.port_mode;
   get<HTMLInputElement>('fixed-port').value = String(config.fixed_port);
+  get<HTMLInputElement>('mdns-enabled').checked = config.mdns_enabled;
   get<HTMLInputElement>('allow-adb-root').checked = config.allow_adb_root;
   portField();
 }
@@ -290,6 +295,7 @@ get('settings').addEventListener('submit', (event) => {
     enabled: get<HTMLInputElement>('enabled').checked,
     port_mode: get<HTMLSelectElement>('port-mode').value as Config['port_mode'],
     fixed_port: port,
+    mdns_enabled: get<HTMLInputElement>('mdns-enabled').checked,
     allow_adb_root: get<HTMLInputElement>('allow-adb-root').checked,
   };
   void action({ op: 'configure', config });

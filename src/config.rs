@@ -22,7 +22,13 @@ pub struct Config {
     pub enabled: bool,
     pub port_mode: PortMode,
     pub fixed_port: u16,
+    #[serde(default = "default_mdns_enabled")]
+    pub mdns_enabled: bool,
     pub allow_adb_root: bool,
+}
+
+fn default_mdns_enabled() -> bool {
+    true
 }
 
 impl Default for Config {
@@ -31,6 +37,7 @@ impl Default for Config {
             enabled: true,
             port_mode: PortMode::Random,
             fixed_port: 5555,
+            mdns_enabled: true,
             allow_adb_root: false,
         }
     }
@@ -80,8 +87,17 @@ mod tests {
     fn safe_defaults() {
         let c = Config::default();
         assert_eq!(c.port(), 0);
+        assert!(c.mdns_enabled);
         assert!(!c.allow_adb_root);
         assert!(serde_json::from_str::<Config>(r#"{"enabled":true}"#).is_err());
+    }
+    #[test]
+    fn legacy_config_enables_mdns() {
+        let c: Config = serde_json::from_str(
+            r#"{"enabled":true,"port_mode":"random","fixed_port":5555,"allow_adb_root":false}"#,
+        )
+        .unwrap();
+        assert_eq!(c, Config::default());
     }
     #[test]
     fn reject_privileged_port() {

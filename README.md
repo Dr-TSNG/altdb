@@ -40,6 +40,7 @@ On later connections, use `adb connect` directly. Paired computers may also reco
 Use the WebUI to configure:
 
 - **Connection port:** Random by default, or a fixed port from `1024–65535`. An occupied fixed port is reported as an error.
+- **Enable mDNS:** On by default. Advertises connection and pairing services for automatic discovery. When disabled, use the commands in the WebUI to pair and connect manually. Changing this setting restarts the service and disconnects existing sessions.
 - **Allow adb root:** Off by default. When enabled, `adb root` selects root permissions for new services across all connections; `adb unroot` selects shell permissions. TLS connections stay open, and running services keep their existing permissions. A service restart restores shell mode.
 - **Paired computers:** Revoking a computer disconnects it immediately. It must pair again to reconnect.
 - **Language:** Follows the system by default. A manual language choice is saved on the device.

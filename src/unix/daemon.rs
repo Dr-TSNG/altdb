@@ -225,7 +225,11 @@ impl Daemon {
 
     fn start(&mut self, addresses: &[Endpoint]) -> Result<()> {
         let (endpoints, tcp) = network::listeners(addresses, self.store.config.port(), self.test)?;
-        let (mdns_specs, mdns) = mdns::sockets(&endpoints, self.test)?;
+        let (mdns_specs, mdns) = if self.store.config.mdns_enabled {
+            mdns::sockets(&endpoints, self.test)?
+        } else {
+            (vec![], vec![])
+        };
         self.bundle = Some(Bundle {
             endpoints,
             tcp,
@@ -283,6 +287,7 @@ impl Daemon {
                 if previous != self.store.config {
                     let endpoint_changed = previous.port_mode != self.store.config.port_mode
                         || previous.fixed_port != self.store.config.fixed_port
+                        || previous.mdns_enabled != self.store.config.mdns_enabled
                         || previous.enabled != self.store.config.enabled;
                     if endpoint_changed {
                         self.stop(

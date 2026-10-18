@@ -38,7 +38,7 @@
         </div>
         <p id="reason" class="muted" data-i18n="reading_status">Reading service status…</p>
         <div id="endpoints" class="commands"></div>
-        <p class="hint" data-i18n="connection_hint">
+        <p id="connection-hint" class="hint" data-i18n="connection_hint">
           Paired computers can discover this device or use the commands above.
         </p>
         <div class="metrics">
@@ -106,6 +106,14 @@
           <p class="hint" data-i18n="port_hint">
             Random ports change when the service restarts or recovers from a conflict.
           </p>
+          <label class="toggle"
+            ><span
+              ><strong data-i18n="mdns">Enable mDNS</strong
+              ><small data-i18n="mdns_hint"
+                >Advertise connection and pairing services for automatic discovery</small
+              ></span
+            ><input id="mdns-enabled" type="checkbox" role="switch" checked
+          /></label>
           <label class="toggle"
             ><span
               ><strong data-i18n="adb_root">Allow adb root</strong
