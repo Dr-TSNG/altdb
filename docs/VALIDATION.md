@@ -6,6 +6,14 @@
 
 用户确认手机端问题已解决、已连接电脑。反馈未附完整 Android 版本、页大小、冷启动过程和延迟测量，以下专项验收不据此全部标记为通过。
 
+### 2026-10-18：热安装启动 shell
+
+在 Xiaomi 2512BPNDAC、KernelSU 32693 / UAPI 6 上确认：热安装后无 daemon 和 control.sock，service.stop 残留。用系统 sh 跟踪 service.sh 得到 `flock: Bad file descriptor`，随后脚本按锁冲突分支返回 0。`nohup sh` 会通过 PATH 执行系统 shell，不能保持 KernelSU standalone BusyBox 的文件描述符处理；原先使用普通 Linux shell 的回归未覆盖该差异。
+
+修复为显式以 KernelSU BusyBox 执行停止钩子、nohup 和看护脚本。已开机时等待控制接口最多四秒，启动失败在安装日志中提示；daemon 最近一次启动的错误保存在私有 service.log。使用 KernelSU 自带 x86_64 BusyBox 的回环测试先复现旧版热启动失败，再验证修复后的启动、目录替换、单实例、配对保留和失败日志；普通 Linux shell 的兼容路径也通过。
+
+手机上使用显式 BusyBox 启动现有看护脚本后，管理接口恢复，返回 0.3.0 / paused_native / Native wireless debugging is enabled；系统无线调试保留用于排查。本次未在手机安装新 ZIP，也未验证关闭原生调试后的连接恢复。Android ARM64 完整模块构建及 16 KB ELF 检查通过。
+
 ### 2026-10-08：shell 启动环境与 scrcpy
 
 在 Xiaomi 2512BPNDAC / Android 17、KernelSU 32667 / UAPI 5 上复现：旧版 shell 缺少 `ANDROID_DATA` 等变量，`app_process` 报 `ANDROID_DATA environment variable unset`，scrcpy 5.0.1 报 `Server connection failed`。修复 daemon → service → shell 的运行时环境白名单传递，并补齐系统 PATH、TMPDIR、LOGNAME；通过保留原看护进程的启动环境重启 daemon，设备运行修复后的二进制。

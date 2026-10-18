@@ -8,6 +8,7 @@ STATE=/data/adb/altdb
 [ ! -L "$STATE" ] || exit 1
 mkdir -p "$STATE" || exit 1
 chmod 0700 "$STATE" || exit 1
+[ ! -L "$STATE/service.log" ] || exit 1
 [ ! -L "$STATE/service.lock" ] || exit 1
 exec 9>>"$STATE/service.lock" || exit 1
 flock -n 9 || exit 0
@@ -34,7 +35,7 @@ DELAY=1
 while [ ! -f "$MODDIR/disable" ] && [ ! -f "$MODDIR/remove" ]; do
   check_stop
   START=$(date +%s)
-  "$MODDIR/bin/altdb" daemon 9>&- >/dev/null 2>&1 &
+  "$MODDIR/bin/altdb" daemon 9>&- >"$STATE/service.log" 2>&1 &
   PID=$!
   while kill -0 "$PID" 2>/dev/null; do
     check_stop

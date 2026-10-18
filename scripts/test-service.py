@@ -36,6 +36,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--binary", required=True, type=Path)
     parser.add_argument("--adb", required=True, type=Path)
+    parser.add_argument("--busybox", type=Path, help="run module scripts in standalone BusyBox")
     args = parser.parse_args()
     binary = str(args.binary.resolve())
     with tempfile.TemporaryDirectory(prefix="altdb-service-") as folder:
@@ -46,6 +47,14 @@ def main():
         module = root / "module"
         bin_dir = module / "bin"
         bin_dir.mkdir(parents=True)
+        shell = [str(args.busybox.resolve()), "sh"] if args.busybox else ["/bin/sh"]
+        busybox = args.busybox.resolve() if args.busybox else bin_dir / "busybox"
+        if not args.busybox:
+            busybox.write_text('#!/bin/sh\nexec "$@"\n')
+        else:
+            # Android's external sh does not provide standalone BusyBox applets.
+            # Catch launchers that silently escape into an external shell.
+            (bin_dir / "sh").write_text('#!/bin/sh\necho "external sh used" >&2\nexit 127\n')
         boot.write_text("0\n")
         scripts = Path(__file__).resolve().parents[1] / "module"
         for name in ("service.sh", "emulated-soft-reboot.sh"):
@@ -54,12 +63,19 @@ def main():
             (module / name).write_text(
                 source.replace("STATE=/data/adb/altdb", f"STATE={shlex.quote(str(state))}")
             )
-        shutil.copyfile(scripts / "hotinstall.sh", module / "hotinstall.sh")
+        (module / "hotinstall.sh").write_text(
+            (scripts / "hotinstall.sh")
+            .read_text()
+            .replace("BUSYBOX=/data/adb/ksu/bin/busybox", f"BUSYBOX={shlex.quote(str(busybox))}")
+        )
         (bin_dir / "getprop").write_text(f"#!/bin/sh\ncat {shlex.quote(str(boot))}\n")
         (bin_dir / "altdb").write_text(
             "#!/bin/sh\n"
-            f'if [ "$1" = ctl ]; then exec {shlex.quote(binary)} '
-            f'test-ctl {shlex.quote(str(state))} \'{{"op":"stop"}}\'; fi\n'
+            'if [ "$1" = ctl ]; then\ncase "$2" in\n'
+            f"stop) exec {shlex.quote(binary)} test-ctl {shlex.quote(str(state))} "
+            '\'{"op":"stop"}\' ;;\n'
+            f"status) exec {shlex.quote(binary)} test-ctl {shlex.quote(str(state))} "
+            '\'{"op":"status"}\' ;;\nesac\nexit 1\nfi\n'
             # A daemon must not inherit the watchdog's lock descriptor.
             "[ ! -e /proc/self/fd/9 ] || exit 99\n"
             f"echo $$ >> {shlex.quote(str(starts))}\n"
@@ -68,6 +84,8 @@ def main():
         for executable in bin_dir.iterdir():
             executable.chmod(0o755)
         environment = dict(os.environ)
+        if args.busybox:
+            environment["ASH_STANDALONE"] = "1"
         environment["PATH"] = f"{bin_dir}:{environment['PATH']}"
         environment["ANDROID_USER_HOME"] = str(root / "android-user")
         Path(environment["ANDROID_USER_HOME"]).mkdir()
@@ -81,22 +99,22 @@ def main():
 
         def launch():
             process = subprocess.Popen(
-                ["/bin/sh", str(module / "service.sh")], env=environment, start_new_session=True
+                shell + [str(module / "service.sh")], env=environment, start_new_session=True
             )
             watchdogs.append(process)
             return process
 
         def soft_reboot():
             subprocess.run(
-                ["/bin/sh", str(module / "emulated-soft-reboot.sh")],
+                shell + [str(module / "emulated-soft-reboot.sh")],
                 env=environment,
                 check=True,
                 timeout=25,
             )
 
-        def hot_install():
+        def hot_install(success=True):
             process = subprocess.Popen(
-                ["/bin/sh", str(module / "hotinstall.sh")],
+                shell + [str(module / "hotinstall.sh")],
                 env=environment,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
@@ -104,7 +122,8 @@ def main():
             )
             hot_installs.append(process)
             output, _ = process.communicate(timeout=30)
-            assert process.returncode == 0, output.decode(errors="replace")
+            assert process.returncode == (0 if success else 1), output.decode(errors="replace")
+            return output
 
         def locked():
             return (
@@ -301,7 +320,8 @@ def main():
             # There may be no control socket while the watchdog is backing off.
             (bin_dir / "altdb").write_text(
                 '#!/bin/sh\n[ "$1" != ctl ] || exit 1\n'
-                f"echo $$ >> {shlex.quote(str(starts))}\nexit 1\n"
+                f"echo $$ >> {shlex.quote(str(starts))}\n"
+                "echo 'simulated daemon startup failure' >&2\nexit 1\n"
             )
             boot.write_text("1\n")
             watchdog = launch()
@@ -311,6 +331,11 @@ def main():
             assert len(starts.read_text().splitlines()) == count + 3
             assert not locked()
             print("PASS update stops watchdog during crash backoff", flush=True)
+
+            output = hot_install(success=False)
+            assert b"control socket did not become available" in output
+            assert "simulated daemon startup failure" in (state / "service.log").read_text()
+            print("PASS failed hot startup reports failure and retains daemon error", flush=True)
         finally:
             (module / "disable").touch()
             if session:

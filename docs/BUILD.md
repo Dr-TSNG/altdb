@@ -60,6 +60,8 @@ python3 scripts/test-service.py --adb /path/to/platform-tools/adb --binary "targ
 
 `test-service.py` 在临时目录执行真实 service.sh 和 emulated-soft-reboot.sh，替换数据目录并模拟 getprop；覆盖开机等待期间的重复启动、未更新时软重启钩子 / boot_completed 重置 / HUP / 重复启动对同一 TLS shell 的影响、更新时旧 daemon 和看护脚本退出及模块目录替换后复用配对、开机等待和崩溃退避期间的更新停止，以及崩溃恢复和禁用/移除标记。它不模拟 Android 杀进程或网络重置，不能代替真机“模拟软重启”验证。
 
+给该测试传入 `--busybox /path/to/kernelsu/busybox` 可使用与 Linux 宿主架构匹配的 KernelSU BusyBox，覆盖热安装的 standalone shell、服务交接、控制接口就绪与启动失败日志；普通 Linux shell 环境可能掩盖设备上缺少 applet 的问题。
+
 给互操作命令添加 `--latency-only` 可单独测量持续 shell 的单字节往返（40 次，报告 p50/p95）和新命令启动时间（8 次，报告 p50）。结果用于同一环境的版本比较，不代表手机 Wi-Fi 延迟。
 
 模糊测试（Linux，沿用上面的本机目标变量）：先安装 cargo-fuzz 和 nightly，在仓库根运行 `python3 scripts/seed-fuzz.py`，然后 `cargo +nightly fuzz run --target "$CARGO_BUILD_TARGET" wire .cache/fuzz-corpus -- -max_total_time=60 -max_len=16384`。具体执行结果和局限见 [验收记录](VALIDATION.md)。
