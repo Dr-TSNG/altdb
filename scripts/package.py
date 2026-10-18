@@ -6,6 +6,7 @@ import argparse
 import os
 import pathlib
 import struct
+import subprocess
 import tomllib
 import zipfile
 
@@ -18,9 +19,10 @@ if not target_dir.is_absolute():
     target_dir = ROOT / target_dir
 binary = target_dir / "aarch64-linux-android/release/altdb"
 version = tomllib.loads((ROOT / "Cargo.toml").read_text(encoding="utf-8"))["package"]["version"]
+module_prop = (ROOT / "module/module.prop").read_text(encoding="utf-8")
 properties = dict(
     line.split("=", 1)
-    for line in (ROOT / "module/module.prop").read_text(encoding="utf-8").splitlines()
+    for line in module_prop.splitlines()
     if "=" in line and not line.startswith("#")
 )
 assert properties["version"] == f"v{version}", "Cargo and module versions must match"
@@ -71,6 +73,16 @@ print(
 )
 if args.check_binary:
     raise SystemExit(0)
+assert (
+    subprocess.check_output(
+        ["git", "rev-parse", "--is-shallow-repository"], cwd=ROOT, text=True
+    ).strip()
+    == "false"
+), "Packaging requires full Git history; run git fetch --unshallow"
+version_code = subprocess.check_output(
+    ["git", "rev-list", "--count", "HEAD"], cwd=ROOT, text=True
+).strip()
+module_prop = module_prop.replace("@GIT_COMMIT_COUNT@", version_code)
 assert (ROOT / "webui/dist/index.html").is_file(), "Build WebUI first"
 files = {
     "bin/altdb": binary,
@@ -90,7 +102,7 @@ with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED, compressleve
             0o100755 if name.startswith("bin/") or name.endswith(".sh") else 0o100644
         ) << 16
         entry.compress_type = zipfile.ZIP_DEFLATED
-        content = path.read_bytes()
+        content = module_prop.encode("utf-8") if name == "module.prop" else path.read_bytes()
         if name.endswith(".sh"):
             content = content.replace(b"\r\n", b"\n")
         archive.writestr(entry, content)

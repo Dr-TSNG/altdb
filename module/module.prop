@@ -1,6 +1,6 @@
 id=altdb
 name=altdb
 version=v0.2.1
-versionCode=7
+versionCode=@GIT_COMMIT_COUNT@
 author=Nullptr
 description=Alternative adb server over local network
