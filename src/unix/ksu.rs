@@ -328,9 +328,9 @@ pub fn property(name: &str) -> Result<String> {
         let mut buf = [0 as libc::c_char; 92];
         let n = unsafe { __system_property_get(name.as_ptr(), buf.as_mut_ptr()) };
         ensure!(n >= 0, "property read failed");
-        return Ok(unsafe { std::ffi::CStr::from_ptr(buf.as_ptr()) }
+        Ok(unsafe { std::ffi::CStr::from_ptr(buf.as_ptr()) }
             .to_str()?
-            .to_owned());
+            .to_owned())
     }
     #[cfg(not(target_os = "android"))]
     {

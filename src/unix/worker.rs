@@ -2,13 +2,14 @@ use super::{
     ipc::{self, Message, Request},
     ksu,
     mdns::Mdns,
+    socket::{Listener, Stream},
     transport,
 };
 use crate::{config::MAX_TRANSPORTS, pairing};
 use anyhow::{Result, bail, ensure};
 use std::{
     collections::HashMap,
-    net::{Shutdown, TcpListener, TcpStream, UdpSocket},
+    net::{Shutdown, UdpSocket},
     os::fd::{AsRawFd, FromRawFd, OwnedFd},
     sync::{
         Arc, Mutex,
@@ -98,7 +99,7 @@ impl Broker {
 }
 
 struct Running {
-    socket: TcpStream,
+    socket: Stream,
     cancel: Arc<AtomicBool>,
     handle: thread::JoinHandle<()>,
     started: Instant,
@@ -114,7 +115,7 @@ impl Running {
 struct PairWindow {
     epoch: u64,
     code: Zeroizing<String>,
-    listeners: Vec<TcpListener>,
+    listeners: Vec<Listener>,
     active: Option<Running>,
 }
 
@@ -135,6 +136,7 @@ pub fn run() -> Result<()> {
         mut hosts,
         endpoints,
         mdns,
+        backend,
         test,
     } = boot
     else {
@@ -149,8 +151,16 @@ pub fn run() -> Result<()> {
     let banner = transport::device_banner();
     ksu::restrict_network(test)?;
     let mdns_sockets: Vec<UdpSocket> = fds.drain(endpoints.len()..).map(Into::into).collect();
-    let listeners: Vec<TcpListener> = fds.into_iter().map(Into::into).collect();
-    let mut publisher = Mdns::new(mdns_sockets, mdns, endpoints, identity.guid.clone());
+    let listeners: Vec<Listener> = fds
+        .into_iter()
+        .map(|fd| Listener::new(fd, backend))
+        .collect::<Result<_>>()?;
+    let mut publisher = Mdns::new(
+        mdns_sockets,
+        mdns,
+        endpoints.iter().filter_map(|e| e.tcp().cloned()).collect(),
+        identity.guid.clone(),
+    );
     let identity = Arc::new(identity);
     let broker = Broker::new(fd);
     let mut connections: HashMap<u64, Running> = HashMap::new();
@@ -198,11 +208,14 @@ pub fn run() -> Result<()> {
                     endpoints,
                 } => {
                     ensure!(fds.len() == endpoints.len(), "pairing listener mismatch");
-                    publisher.pairing(endpoints.first().map(|e| e.port));
+                    publisher.pairing(endpoints.first().and_then(|e| e.tcp()).map(|e| e.port));
                     pair = Some(PairWindow {
                         epoch,
                         code: Zeroizing::new(code),
-                        listeners: fds.into_iter().map(Into::into).collect(),
+                        listeners: fds
+                            .into_iter()
+                            .map(|fd| Listener::new(fd, backend))
+                            .collect::<Result<_>>()?,
                         active: None,
                     });
                 }
@@ -238,7 +251,7 @@ pub fn run() -> Result<()> {
             if connections.len() >= MAX_TRANSPORTS {
                 break;
             }
-            if let Ok((socket, _)) = listener.accept() {
+            if let Ok(socket) = listener.accept() {
                 let control = socket.try_clone()?;
                 let cancel = Arc::new(AtomicBool::new(false));
                 let signal = cancel.clone();
@@ -284,7 +297,7 @@ pub fn run() -> Result<()> {
             }
             if window.active.is_none() {
                 for listener in &window.listeners {
-                    if let Ok((socket, _)) = listener.accept() {
+                    if let Ok(socket) = listener.accept() {
                         let control = socket.try_clone()?;
                         let code = window.code.clone();
                         let epoch = window.epoch;

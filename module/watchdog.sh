@@ -27,10 +27,6 @@ check_stop() {
     stopping
   fi
 }
-while [ "$(getprop sys.boot_completed)" != 1 ]; do
-  check_stop
-  sleep 1
-done
 DELAY=1
 while [ ! -f "$MODDIR/disable" ] && [ ! -f "$MODDIR/remove" ]; do
   check_stop

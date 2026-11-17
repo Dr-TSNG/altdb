@@ -57,17 +57,18 @@ def main():
             (bin_dir / "sh").write_text('#!/bin/sh\necho "external sh used" >&2\nexit 127\n')
         boot.write_text("0\n")
         scripts = Path(__file__).resolve().parents[1] / "module"
-        for name in ("service.sh", "emulated-soft-reboot.sh"):
+        for name in ("watchdog.sh", "emulated-soft-reboot.sh"):
             source = (scripts / name).read_text()
             assert source.count("STATE=/data/adb/altdb") == 1
             (module / name).write_text(
                 source.replace("STATE=/data/adb/altdb", f"STATE={shlex.quote(str(state))}")
             )
-        (module / "hotinstall.sh").write_text(
-            (scripts / "hotinstall.sh")
-            .read_text()
-            .replace("BUSYBOX=/data/adb/ksu/bin/busybox", f"BUSYBOX={shlex.quote(str(busybox))}")
-        )
+        for name in ("hotinstall.sh", "post-fs-data.sh"):
+            (module / name).write_text(
+                (scripts / name).read_text().replace(
+                    "BUSYBOX=/data/adb/ksu/bin/busybox", f"BUSYBOX={shlex.quote(str(busybox))}"
+                )
+            )
         (bin_dir / "getprop").write_text(f"#!/bin/sh\ncat {shlex.quote(str(boot))}\n")
         (bin_dir / "altdb").write_text(
             "#!/bin/sh\n"
@@ -99,7 +100,7 @@ def main():
 
         def launch():
             process = subprocess.Popen(
-                shell + [str(module / "service.sh")], env=environment, start_new_session=True
+                shell + [str(module / "watchdog.sh")], env=environment, start_new_session=True
             )
             watchdogs.append(process)
             return process
@@ -164,13 +165,21 @@ def main():
             assert os.read(session.stdout.fileno(), len(data)) == data
 
         try:
+            subprocess.run(shell + [str(module / "post-fs-data.sh")], env=environment,
+                           check=True, timeout=3, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            until(running)
+            assert boot.read_text().strip() == "0"
+            ctl("stop")
+            until(lambda: not locked())
+            starts.unlink()
+            print("PASS post-fs-data returns promptly and starts before boot completion", flush=True)
             watchdog = launch()
             until(lambda: (state / "service.lock").exists())
             until(locked)
             duplicates = [launch() for _ in range(4)]
             assert all(process.wait(timeout=3) == 0 for process in duplicates)
-            assert not starts.exists() and watchdog.poll() is None
-            print("PASS watchdog single instance before boot completed", flush=True)
+            assert until(running) and watchdog.poll() is None
+            print("PASS watchdog starts once before boot completed", flush=True)
 
             boot.write_text("1\n")
             status = until(running)
@@ -234,10 +243,9 @@ def main():
             (module / "update").unlink()
             watchdog = launch()
             until(locked)
-            assert len(starts.read_text().splitlines()) == 2
-            boot.write_text("1\n")
             status = until(running)
             assert len(starts.read_text().splitlines()) == 3
+            boot.write_text("1\n")
             address = status["endpoints"][0]
             assert b"connected" in adb("connect", address)
             assert adb("-s", address, "shell", "echo", "updated").strip() == b"updated"
@@ -286,12 +294,10 @@ def main():
             session.stdout.close()
             session = None
             assert not Path(f"/proc/{old_pid}").exists()
-            assert not (state / "control.sock").exists()
             until(locked)
-            assert len(starts.read_text().splitlines()) == count + 1
-            boot.write_text("1\n")
             status = until(running)
             assert len(starts.read_text().splitlines()) == count + 2
+            boot.write_text("1\n")
             assert status["hosts"][0]["fingerprint"] == fingerprint
             duplicate = launch()
             assert duplicate.wait(timeout=3) == 0
@@ -312,10 +318,12 @@ def main():
             count = len(starts.read_text().splitlines())
             watchdog = launch()
             until(locked)
+            until(running)
+            count += 1
             soft_reboot()
             assert watchdog.wait(timeout=3) == 0
             assert len(starts.read_text().splitlines()) == count
-            print("PASS update stops watchdog before boot completed", flush=True)
+            print("PASS update stops early watchdog before boot completed", flush=True)
 
             # There may be no control socket while the watchdog is backing off.
             (bin_dir / "altdb").write_text(

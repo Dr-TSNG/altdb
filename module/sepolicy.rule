@@ -12,6 +12,8 @@ allow altdb_net ksu unix_stream_socket { setopt ioctl shutdown }
 allow altdb_net altdb_net unix_stream_socket { create read write getattr getopt setopt ioctl shutdown }
 allow altdb_net altdb_net tcp_socket { create read write getattr getopt setopt ioctl accept listen shutdown }
 allow altdb_net ksu tcp_socket { read write getattr getopt setopt ioctl accept listen shutdown }
+allow altdb_net ksu vsock_socket { read write getattr getopt setopt ioctl accept listen shutdown }
+allow altdb_net altdb_net vsock_socket { read write getattr getopt setopt ioctl accept listen shutdown }
 # Reverse listeners are created after the binder drops to shell. Their labels
 # remain shell when passed through the supervisor to the network process.
 allow altdb_net shell tcp_socket { read write getattr getopt setopt ioctl accept listen shutdown }

@@ -3,4 +3,4 @@ name=altdb
 version=v@CARGO_VERSION@
 versionCode=@GIT_COMMIT_COUNT@
 author=Nullptr
-description=Alternative adb server over local network
+description=Alternative adb server over TCP or guest-to-host vsock

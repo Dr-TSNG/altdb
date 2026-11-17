@@ -1,10 +1,10 @@
 use super::{
     ipc::{self, Message, Request, ServiceStart},
-    ksu, mdns,
-    network::{self, Endpoint},
+    ksu, mdns, network,
+    socket::{self, Endpoint},
     store::Store,
 };
-use crate::config::{self, Control};
+use crate::config::{self, Backend, Control};
 use anyhow::{Result, bail, ensure};
 use serde_json::{Value, json};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -12,7 +12,6 @@ use std::{
     collections::{HashMap, VecDeque},
     fs,
     io::{Read, Write},
-    net::TcpListener,
     os::{
         fd::{AsRawFd, OwnedFd},
         unix::{
@@ -31,8 +30,8 @@ extern "C" fn stop_signal(_: i32) {
 
 struct Bundle {
     endpoints: Vec<Endpoint>,
-    tcp: Vec<TcpListener>,
-    mdns_specs: Vec<Endpoint>,
+    listeners: Vec<OwnedFd>,
+    mdns_specs: Vec<network::Endpoint>,
     mdns: Vec<std::net::UdpSocket>,
 }
 
@@ -204,7 +203,7 @@ impl Daemon {
         let child = ipc::spawn("worker", b.as_raw_fd())?;
         drop(b);
         let fds: Vec<_> = bundle
-            .tcp
+            .listeners
             .iter()
             .map(AsRawFd::as_raw_fd)
             .chain(bundle.mdns.iter().map(AsRawFd::as_raw_fd))
@@ -214,6 +213,7 @@ impl Daemon {
             hosts: self.store.hosts.clone(),
             endpoints: bundle.endpoints.clone(),
             mdns: bundle.mdns_specs.clone(),
+            backend: self.store.config.backend,
             test: self.test,
         };
         ipc::send(a.as_raw_fd(), &boot, &fds)?;
@@ -223,16 +223,25 @@ impl Daemon {
         Ok(())
     }
 
-    fn start(&mut self, addresses: &[Endpoint]) -> Result<()> {
-        let (endpoints, tcp) = network::listeners(addresses, self.store.config.port(), self.test)?;
-        let (mdns_specs, mdns) = if self.store.config.mdns_enabled {
-            mdns::sockets(&endpoints, self.test)?
+    fn start(&mut self, addresses: &[network::Endpoint]) -> Result<()> {
+        let (endpoints, listeners) = socket::listeners(
+            self.store.config.backend,
+            addresses,
+            self.store.config.port(),
+            self.test,
+        )?;
+        let (mdns_specs, mdns) = if self.store.config.mdns() {
+            let tcp = endpoints
+                .iter()
+                .filter_map(|e| e.tcp().cloned())
+                .collect::<Vec<_>>();
+            mdns::sockets(&tcp, self.test)?
         } else {
             (vec![], vec![])
         };
         self.bundle = Some(Bundle {
             endpoints,
-            tcp,
+            listeners,
             mdns_specs,
             mdns,
         });
@@ -261,7 +270,13 @@ impl Daemon {
                 );
                 self.pair_stop();
                 let bundle = self.bundle.as_ref().unwrap();
-                let (endpoints, tcp) = network::listeners(&bundle.endpoints, 0, self.test)?;
+                let addresses = bundle
+                    .endpoints
+                    .iter()
+                    .filter_map(|e| e.tcp().cloned())
+                    .collect::<Vec<_>>();
+                let (endpoints, listeners) =
+                    socket::listeners(self.store.config.backend, &addresses, 0, self.test)?;
                 let code = crate::crypto::pairing_code()?;
                 self.epoch += 1;
                 self.send(
@@ -270,7 +285,7 @@ impl Daemon {
                         code: code.clone(),
                         endpoints: endpoints.clone(),
                     },
-                    &tcp.iter().map(AsRawFd::as_raw_fd).collect::<Vec<_>>(),
+                    &listeners.iter().map(AsRawFd::as_raw_fd).collect::<Vec<_>>(),
                 )?;
                 self.window = Some(Window {
                     epoch: self.epoch,
@@ -289,26 +304,23 @@ impl Daemon {
             Control::Configure { config } => {
                 let previous = self.store.config.clone();
                 self.store.configure(config)?;
-                if previous != self.store.config {
-                    let endpoint_changed = previous.port_mode != self.store.config.port_mode
-                        || previous.fixed_port != self.store.config.fixed_port
-                        || previous.mdns_enabled != self.store.config.mdns_enabled
-                        || previous.enabled != self.store.config.enabled;
-                    if endpoint_changed {
-                        self.stop(
-                            "disabled",
-                            "Configuration updated; checking startup conditions",
-                        );
-                    } else {
-                        self.stop_worker();
-                        self.root = false;
-                        if self.bundle.is_some() {
-                            self.start_worker()?;
-                        }
+                if self.store.config.endpoints_changed(&previous) {
+                    self.stop(
+                        "disabled",
+                        "Configuration updated; checking startup conditions",
+                    );
+                } else if previous.allow_adb_root != self.store.config.allow_adb_root {
+                    self.stop_worker();
+                    self.root = false;
+                    if self.bundle.is_some() {
+                        self.start_worker()?;
                     }
+                }
+                if previous != self.store.config {
                     self.log("Configuration saved");
                 }
             }
+
             Control::Revoke { fingerprint } => {
                 self.store.revoke(&fingerprint)?;
                 let ids: Vec<_> = self
@@ -707,7 +719,16 @@ pub fn run(path: &Path, test: bool) -> Result<()> {
                         d.reason.clear();
                         d.log("Debugging settings are available again");
                     }
-                    if network_check.elapsed() >= Duration::from_secs(2)
+                    if d.store.config.backend == Backend::Vsock {
+                        // Lifecycle checks are shared with TCP; only transport
+                        // startup is independent of network interfaces and IPs.
+                        if d.bundle.is_none()
+                            && Instant::now() >= d.retry_at
+                            && let Err(error) = d.start(&[])
+                        {
+                            d.stop("error", &format!("Cannot start vsock: {error:#}"));
+                        }
+                    } else if network_check.elapsed() >= Duration::from_secs(2)
                         && Instant::now() >= d.retry_at
                     {
                         network_check = Instant::now();
@@ -717,7 +738,11 @@ pub fn run(path: &Path, test: bool) -> Result<()> {
                             }
                             Ok(addresses) => {
                                 let changed = d.bundle.as_ref().is_none_or(|b| {
-                                    let mut old = b.endpoints.clone();
+                                    let mut old = b
+                                        .endpoints
+                                        .iter()
+                                        .filter_map(|e| e.tcp().cloned())
+                                        .collect::<Vec<_>>();
                                     for ep in &mut old {
                                         ep.port = 0;
                                     }

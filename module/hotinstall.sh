@@ -13,7 +13,7 @@ fi
 # The installer waits for this script, not the long-running watchdog. Detach
 # its stdio so the installer can close its output pipe without affecting it.
 # nohup execs through PATH, so an unqualified sh would lose standalone mode.
-"$BUSYBOX" nohup "$BUSYBOX" sh "$MODDIR/service.sh" </dev/null >/dev/null 2>&1 &
+"$BUSYBOX" nohup "$BUSYBOX" sh "$MODDIR/watchdog.sh" </dev/null >/dev/null 2>&1 &
 
 if [ "$(getprop sys.boot_completed)" = 1 ]; then
   if ! "$BUSYBOX" timeout 4 "$BUSYBOX" sh -c '

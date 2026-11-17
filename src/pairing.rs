@@ -1,9 +1,7 @@
 use crate::crypto::{self, Identity, Pake, Tls};
+use crate::unix::socket::Stream;
 use anyhow::{Result, ensure};
-use std::{
-    io::{Read, Write},
-    net::TcpStream,
-};
+use std::io::{Read, Write};
 use zeroize::Zeroizing;
 
 pub const PEER_SIZE: usize = 8192;
@@ -26,12 +24,12 @@ fn receive(tls: &mut Tls, kind: u8) -> Result<Vec<u8>> {
     Ok(body)
 }
 
-pub fn pair(socket: TcpStream, identity: &Identity, code: &str) -> Result<String> {
+pub fn pair(socket: impl Into<Stream>, identity: &Identity, code: &str) -> Result<String> {
     pair_with_commit(socket, identity, code, |_| Ok(()))
 }
 
 pub fn pair_with_commit(
-    socket: TcpStream,
+    socket: impl Into<Stream>,
     identity: &Identity,
     code: &str,
     commit: impl FnOnce(&str) -> Result<()>,

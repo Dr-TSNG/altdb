@@ -53,6 +53,14 @@ PTY 的 slave FD 在 spawn 后全部关闭；shell v2 支持 stdin / close-stdin
 
 SYNC 子进程按 shell/root 权限访问文件。路径最长 1024 字节，DATA 最长 64 KiB；普通 push 写同目录随机临时文件，完整接收后 rename；断线删除临时文件。不支持压缩或设备节点写入。
 
+## 传输后端
+
+`Config.backend` 在 `tcp` 与 `vsock` 间选择，缺省为 TCP。`socket.rs` 封装监听与字节流，TLS、SPAKE2 和 ADB 流复用层使用同一套实现。TCP 的 NODELAY、keepalive 与 USER_TIMEOUT 只用于 TCP socket。root 创建监听后通过 SCM_RIGHTS 交给降权 worker；SELinux 对继承的 vsock socket 单独授予收发、accept、选项和关闭权限。
+
+vsock 绑定 CID_ANY，向状态接口报告 `/dev/vsock` 查询到的客体 CID 和实际端口；连接和配对仅接受宿主 CID 2。连接固定使用 5555，临时配对端口使用 VMADDR_PORT_ANY，IPC 与状态保留完整 32 位端口。该后端跳过网卡枚举和 mDNS。TCP 的端口及 mDNS 配置仍持久化，在 vsock 模式下隐藏；改变这些配置不会重建 vsock listener 或 worker。
+
+TCP 与 vsock 共用原生调试检查：USB / 无线调试开启，或系统 adbd 仍在运行时，关闭配对、连接、转发和监听；确认调试关闭且 adbd 停止后，才以 shell 权限恢复。设置不可读时的暂停和已运行连接的有限宽限也保持一致。`post-fs-data` 提前启动管理进程和控制接口；首次调试状态尚不能确认时，传输保持暂停。vsock 只在检查通过后跳过网卡发现，直接创建 AF_VSOCK 监听。
+
 ## 网络与生命周期
 
 ADB 连接启用 TCP keepalive（空闲 30 秒后探测、间隔 10 秒、三次未响应）及 60 秒 TCP_USER_TIMEOUT，清理网络突然中断或电脑离线后遗留的连接；正常空闲连接由 TCP 自动应答，不因没有 ADB 命令而断开。网络主循环统一回收退出的连接线程并通知管理进程清理计数和会话，覆盖认证回执失败等提前返回路径。
@@ -69,9 +77,9 @@ mDNS 监听按获准接口绑定 IPv4 UDP 5353，发布 `_adb-tls-connect._tcp` 
 
 设置读取的两秒限时覆盖命令退出和 stdout 排空，失败时终止独立进程组，防止框架重启期间遗留的 cmd 子进程或管道阻塞检查线程。完整 userspace reboot 会终止用户空间进程；系统杀掉 altdb、重置网络或内核重启时无法保留原 TCP 连接。[AOSP 软重启执行过程](https://source.android.com/docs/core/runtime/soft-restart)
 
-配置和主机列表修改采用私有同目录临时文件、fsync 和 rename；内存配置在保存成功后更新。daemon 与 service.sh 分别持有 daemon.lock / service.lock 的 flock。脚本在等待 boot_completed 前取得锁，重复调用直接退出；锁放在持久数据目录，避免模块更新替换目录后产生第二个看护进程。daemon 不继承脚本锁，崩溃后由原看护进程退避重启；HUP 不停止看护进程。禁用/卸载标记及 TERM/INT 会触发停止，进程退出自动释放锁，无需删除锁文件；模块不覆盖系统文件。
+配置和主机列表修改采用私有同目录临时文件、fsync 和 rename；内存配置在保存成功后更新。daemon 与 watchdog.sh 分别持有 daemon.lock / service.lock 的 flock。post-fs-data.sh 以独立标准输入输出后台启动 watchdog.sh；看护脚本不等待 boot_completed，先取得锁，重复调用直接退出；锁放在持久数据目录，避免模块更新替换目录后产生第二个看护进程。daemon 不继承脚本锁，崩溃后由原看护进程退避重启；HUP 不停止看护进程。禁用/卸载标记及 TERM/INT 会触发停止，进程退出自动释放锁，无需删除锁文件；模块不覆盖系统文件。
 
-安装器提供 `KSU_HAS_HOT_INSTALL=true` 时，customize.sh 请求热安装并指定 hotinstall.sh。KernelSU 换入新模块目录、加载 sepolicy.rule 后执行钩子；钩子强制停止旧 daemon 和看护脚本，等待两个持久锁释放，再以独立标准输入输出后台启动新版 service.sh。停止与启动均显式使用 `/data/adb/ksu/bin/busybox sh` 并保留 standalone 模式，避免 nohup 经 PATH 启动系统 sh 后丢失 flock 等 applet。停止阶段的 CLI 限时五秒，两个锁共用二十秒等待预算；已开机时再给控制接口四秒就绪时间，失败则在安装日志提示。daemon 最近一次启动的输出保存在私有目录的 service.log。热安装会断开现有会话，配置、身份和配对记录保留；不支持热安装的安装器继续走重启流程。接口依据：[KernelSU 热安装提交](https://github.com/tiann/KernelSU/commit/200818cabf8ff8ba857dee068c5fae5ae63ae6aa)。
+安装器提供 `KSU_HAS_HOT_INSTALL=true` 时，customize.sh 请求热安装并指定 hotinstall.sh。KernelSU 换入新模块目录、加载 sepolicy.rule 后执行钩子；钩子强制停止旧 daemon 和看护脚本，等待两个持久锁释放，再以独立标准输入输出后台启动新版 watchdog.sh。停止与启动均显式使用 `/data/adb/ksu/bin/busybox sh` 并保留 standalone 模式，避免 nohup 经 PATH 启动系统 sh 后丢失 flock 等 applet。停止阶段的 CLI 限时五秒，两个锁共用二十秒等待预算；已开机时再给控制接口四秒就绪时间，失败则在安装日志提示。daemon 最近一次启动的输出保存在私有目录的 service.log。热安装会断开现有会话，配置、身份和配对记录保留；不支持热安装的安装器继续走重启流程。接口依据：[KernelSU 热安装提交](https://github.com/tiann/KernelSU/commit/200818cabf8ff8ba857dee068c5fae5ae63ae6aa)。
 
 [KernelSU 的软重启流程](https://github.com/tiann/KernelSU/blob/main/userspace/ksud/src/soft_reboot.rs)在替换待更新模块前执行 `emulated-soft-reboot.sh`。没有 `update` 标记时直接返回，保留 daemon 和现有会话；有标记时写入持久目录中的 `service.stop`，通过 `ctl stop` 请求 daemon 清理退出，并等待看护脚本和 daemon 的锁释放。看护脚本在等待开机、运行和崩溃退避期间均响应停止请求，新看护脚本取得锁后才清除该请求。走重启更新路径时，仅安装更新不会立即停止服务。不支持热安装时，首次从不含此钩子的旧版本升级应完整重启一次，使后续软重启能调用已安装的钩子。
 

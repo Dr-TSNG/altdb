@@ -1,10 +1,10 @@
+use crate::unix::socket::Stream;
 use anyhow::{Result, bail, ensure};
 use base64::{Engine, engine::general_purpose::STANDARD};
 use serde::{Deserialize, Serialize};
 use std::{
     ffi::{CString, c_int, c_void},
     io::{self, Read, Write},
-    net::TcpStream,
     ptr::NonNull,
     time::{Duration, Instant},
 };
@@ -210,7 +210,7 @@ impl Pake {
 /// A single owner drives SSL and both BIOs. Never read/write one SSL concurrently.
 pub struct Tls {
     ptr: NonNull<c_void>,
-    socket: TcpStream,
+    socket: Stream,
     outgoing: Vec<u8>,
     offset: usize,
 }
@@ -224,14 +224,15 @@ impl Drop for Tls {
 
 impl Tls {
     pub fn accept(
-        socket: TcpStream,
+        socket: impl Into<Stream>,
         identity: &Identity,
         allowed: &[String],
         pairing: bool,
     ) -> Result<Self> {
+        let socket = socket.into();
         // Interactive traffic must not wait for a previous small TCP segment
         // to be acknowledged. This also covers the independent pairing socket.
-        socket.set_nodelay(true)?;
+        socket.nodelay()?;
         let mut keys = vec![];
         for fp in allowed {
             let b = unhex(fp)?;
@@ -327,7 +328,7 @@ impl Tls {
         self.outgoing.len() - self.offset
     }
 
-    pub fn socket(&self) -> &TcpStream {
+    pub fn socket(&self) -> &Stream {
         &self.socket
     }
 

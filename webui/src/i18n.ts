@@ -1,5 +1,8 @@
 const english = {
-  eyebrow: 'WIRELESS DEBUGGING',
+  eyebrow: 'DEVICE DEBUGGING',
+  backend: 'Backend',
+  connection_vsock_hint:
+    'Forward this vsock endpoint to a host loopback TCP port, then use adb pair or adb connect with that local port.',
   language: 'Language',
   language_auto: 'System',
   connecting: 'Connecting',
@@ -71,7 +74,10 @@ export const languageStorageKey = 'altdb.language';
 export const messages = {
   en: english,
   'zh-CN': {
-    eyebrow: '无线调试',
+    eyebrow: '设备调试',
+    backend: '传输后端',
+    connection_vsock_hint:
+      '将此 vsock 端点转发到宿主回环 TCP 端口，再对该本地端口执行 adb pair 或 adb connect。',
     language: '语言',
     language_auto: '跟随系统',
     connecting: '连接中',

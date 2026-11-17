@@ -79,41 +79,50 @@
           <label class="toggle"
             ><span
               ><strong data-i18n="enable">Enable altdb</strong
-              ><small data-i18n="enable_hint"
+              ><small id="enable-hint" data-i18n="enable_hint"
                 >Pauses while system debugging is enabled and resumes when it is off</small
               ></span
             ><input id="enabled" type="checkbox" role="switch"
           /></label>
           <div class="field">
-            <label for="port-mode" data-i18n="port">Connection port</label
-            ><select id="port-mode">
-              <option value="random" data-i18n="port_random">Random port</option>
-              <option value="fixed" data-i18n="port_fixed">Fixed port</option>
+            <label for="backend" data-i18n="backend">Backend</label>
+            <select id="backend">
+              <option value="tcp">TCP</option>
+              <option value="vsock">vsock</option>
             </select>
           </div>
-          <div id="fixed-field" class="field" hidden>
-            <label for="fixed-port" data-i18n="fixed_port">Port number</label
-            ><input
-              id="fixed-port"
-              type="number"
-              min="1024"
-              max="65535"
-              inputmode="numeric"
-              value="5555"
-              required
-            />
+          <div id="tcp-settings">
+            <div class="field">
+              <label for="port-mode" data-i18n="port">Connection port</label
+              ><select id="port-mode">
+                <option value="random" data-i18n="port_random">Random port</option>
+                <option value="fixed" data-i18n="port_fixed">Fixed port</option>
+              </select>
+            </div>
+            <div id="fixed-field" class="field" hidden>
+              <label for="fixed-port" data-i18n="fixed_port">Port number</label
+              ><input
+                id="fixed-port"
+                type="number"
+                min="1024"
+                max="65535"
+                inputmode="numeric"
+                value="5555"
+                required
+              />
+            </div>
+            <p class="hint" data-i18n="port_hint">
+              Random ports change when the service restarts or recovers from a conflict.
+            </p>
+            <label class="toggle"
+              ><span
+                ><strong data-i18n="mdns">Enable mDNS</strong
+                ><small id="mdns-hint" data-i18n="mdns_hint"
+                  >Advertise connection and pairing services for automatic discovery</small
+                ></span
+              ><input id="mdns-enabled" type="checkbox" role="switch" checked
+            /></label>
           </div>
-          <p class="hint" data-i18n="port_hint">
-            Random ports change when the service restarts or recovers from a conflict.
-          </p>
-          <label class="toggle"
-            ><span
-              ><strong data-i18n="mdns">Enable mDNS</strong
-              ><small data-i18n="mdns_hint"
-                >Advertise connection and pairing services for automatic discovery</small
-              ></span
-            ><input id="mdns-enabled" type="checkbox" role="switch" checked
-          /></label>
           <label class="toggle"
             ><span
               ><strong data-i18n="adb_root">Allow adb root</strong

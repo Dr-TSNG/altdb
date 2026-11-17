@@ -1,3 +1,4 @@
+use super::socket::Stream as SocketStream;
 use super::{ipc::Request, worker::Broker};
 use crate::{
     config::MAX_STREAMS,
@@ -5,11 +6,9 @@ use crate::{
     protocol::*,
 };
 use anyhow::{Result, bail, ensure};
-use socket2::{SockRef, TcpKeepalive};
 use std::{
     collections::{BTreeMap, VecDeque},
     io::{self, Cursor, Read, Write},
-    net::TcpStream,
     os::{
         fd::{AsRawFd, FromRawFd, OwnedFd},
         unix::net::UnixStream,
@@ -115,7 +114,7 @@ pub fn device_banner() -> Vec<u8> {
 }
 
 pub fn run(
-    mut socket: TcpStream,
+    mut socket: SocketStream,
     identity: &Identity,
     allowed: &[String],
     banner: Vec<u8>,
@@ -123,17 +122,8 @@ pub fn run(
     transport: u64,
     cancel: Arc<AtomicBool>,
 ) -> Result<()> {
-    socket.set_nodelay(true)?;
-    let tcp = SockRef::from(&socket);
-    // Detect vanished peers without expiring healthy, idle adb connections.
-    tcp.set_tcp_keepalive(
-        &TcpKeepalive::new()
-            .with_time(Duration::from_secs(30))
-            .with_interval(Duration::from_secs(10))
-            .with_retries(3),
-    )?;
-    // Keepalive does not bound retransmission when data is already unacked.
-    tcp.set_tcp_user_timeout(Some(Duration::from_secs(60)))?;
+    socket.nodelay()?;
+    socket.keepalive()?;
     socket.set_read_timeout(Some(Duration::from_secs(5)))?;
     socket.set_write_timeout(Some(Duration::from_secs(5)))?;
     let hello = Packet::read(&mut socket, 4096, false)?;

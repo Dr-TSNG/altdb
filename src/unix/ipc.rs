@@ -1,5 +1,8 @@
-use super::{environment, network::Endpoint};
-use crate::{config::Host, crypto::Identity};
+use super::{environment, network, socket::Endpoint};
+use crate::{
+    config::{Backend, Host},
+    crypto::Identity,
+};
 use anyhow::{Result, ensure};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 #[cfg(test)]
@@ -22,7 +25,8 @@ pub enum Message {
         identity: Identity,
         hosts: Vec<Host>,
         endpoints: Vec<Endpoint>,
-        mdns: Vec<Endpoint>,
+        mdns: Vec<network::Endpoint>,
+        backend: Backend,
         test: bool,
     },
     Request {

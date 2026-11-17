@@ -11,6 +11,14 @@ pub const MAX_PAIR_FAILURES: u32 = 10;
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
+pub enum Backend {
+    #[default]
+    Tcp,
+    Vsock,
+}
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
 pub enum PortMode {
     #[default]
     Random,
@@ -20,6 +28,8 @@ pub enum PortMode {
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct Config {
     pub enabled: bool,
+    #[serde(default)]
+    pub backend: Backend,
     pub port_mode: PortMode,
     pub fixed_port: u16,
     #[serde(default = "default_mdns_enabled")]
@@ -35,6 +45,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             enabled: true,
+            backend: Backend::Tcp,
             port_mode: PortMode::Random,
             fixed_port: 5555,
             mdns_enabled: true,
@@ -44,13 +55,28 @@ impl Default for Config {
 }
 
 impl Config {
+    pub fn mdns(&self) -> bool {
+        self.backend == Backend::Tcp && self.mdns_enabled
+    }
+
+    pub fn endpoints_changed(&self, previous: &Self) -> bool {
+        self.backend != previous.backend
+            || self.enabled != previous.enabled
+            || self.port() != previous.port()
+            || self.mdns() != previous.mdns()
+    }
+
     pub fn validate(&self) -> Result<()> {
-        ensure!(self.fixed_port >= 1024, "fixed port must be 1024–65535");
+        if self.backend == Backend::Tcp {
+            ensure!(self.fixed_port >= 1024, "fixed port must be 1024–65535");
+        }
         Ok(())
     }
 
     pub fn port(&self) -> u16 {
-        if self.port_mode == PortMode::Random {
+        if self.backend == Backend::Vsock {
+            5555
+        } else if self.port_mode == PortMode::Random {
             0
         } else {
             self.fixed_port

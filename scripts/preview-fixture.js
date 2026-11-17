@@ -6,6 +6,7 @@ const fixture = {
     connections: 1,
     config: {
         enabled: true,
+        backend: 'tcp',
         port_mode: 'random',
         fixed_port: 5555,
         mdns_enabled: true,

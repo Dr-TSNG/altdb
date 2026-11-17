@@ -5,6 +5,7 @@ pub mod ksu;
 pub mod mdns;
 pub mod network;
 pub mod services;
+pub mod socket;
 pub mod store;
 pub mod transport;
 pub mod worker;

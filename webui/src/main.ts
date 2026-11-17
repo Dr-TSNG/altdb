@@ -11,6 +11,7 @@ import './style.css';
 
 type Config = {
   enabled: boolean;
+  backend: 'tcp' | 'vsock';
   port_mode: 'random' | 'fixed';
   fixed_port: number;
   mdns_enabled: boolean;
@@ -149,7 +150,7 @@ function commands(id: string, addresses: string[], verb: string) {
     const row = document.createElement('div');
     row.className = 'command';
     const code = document.createElement('code');
-    code.textContent = `adb ${verb} ${address}`;
+    code.textContent = address.startsWith('vsock:') ? address : `adb ${verb} ${address}`;
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'quiet';
@@ -177,7 +178,11 @@ function render(status: Status) {
   get('version').textContent = status.version;
   get('connections').textContent = String(status.connections);
   get('connection-hint').textContent = t(
-    status.config.mdns_enabled ? 'connection_hint' : 'connection_manual_hint',
+    status.config.backend === 'vsock'
+      ? 'connection_vsock_hint'
+      : status.config.mdns_enabled
+        ? 'connection_hint'
+        : 'connection_manual_hint',
   );
   get('host-count').textContent = String(status.hosts.length);
   commands('endpoints', status.endpoints, 'connect');
@@ -259,17 +264,21 @@ function localize() {
   else if (unavailable) get('state').textContent = t('unavailable');
   renderNotice();
   renderLogs();
+  backendFields();
 }
 function populate(config: Config) {
   get<HTMLInputElement>('enabled').checked = config.enabled;
+  get<HTMLSelectElement>('backend').value = config.backend;
   get<HTMLSelectElement>('port-mode').value = config.port_mode;
   get<HTMLInputElement>('fixed-port').value = String(config.fixed_port);
   get<HTMLInputElement>('mdns-enabled').checked = config.mdns_enabled;
   get<HTMLInputElement>('allow-adb-root').checked = config.allow_adb_root;
-  portField();
+  backendFields();
 }
-function portField() {
-  get('fixed-field').hidden = get<HTMLSelectElement>('port-mode').value !== 'fixed';
+function backendFields() {
+  const vsock = get<HTMLSelectElement>('backend').value === 'vsock';
+  get('tcp-settings').hidden = vsock;
+  get('fixed-field').hidden = vsock || get<HTMLSelectElement>('port-mode').value !== 'fixed';
 }
 get('language').addEventListener('change', () => {
   choice = preference(get<HTMLSelectElement>('language').value);
@@ -283,19 +292,25 @@ get('language').addEventListener('change', () => {
 window.addEventListener('languagechange', () => {
   if (choice === 'auto') localize();
 });
-get('port-mode').addEventListener('change', portField);
+get('port-mode').addEventListener('change', backendFields);
+get('backend').addEventListener('change', backendFields);
 get('pair-toggle').addEventListener('click', () => {
   void action({ op: current?.pairing ? 'pair_stop' : 'pair_start' });
 });
 get('settings').addEventListener('submit', (event) => {
   event.preventDefault();
-  const port = Number(get<HTMLInputElement>('fixed-port').value);
+  const backend = get<HTMLSelectElement>('backend').value as Config['backend'];
+  let port = Number(get<HTMLInputElement>('fixed-port').value);
   if (!Number.isInteger(port) || port < 1024 || port > 65535) {
-    notice('invalid_port', true);
-    return;
+    if (backend === 'tcp') {
+      notice('invalid_port', true);
+      return;
+    }
+    port = current?.config.fixed_port ?? 5555;
   }
   const config: Config = {
     enabled: get<HTMLInputElement>('enabled').checked,
+    backend,
     port_mode: get<HTMLSelectElement>('port-mode').value as Config['port_mode'],
     fixed_port: port,
     mdns_enabled: get<HTMLInputElement>('mdns-enabled').checked,

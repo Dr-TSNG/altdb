@@ -1,7 +1,7 @@
 schemaVersion: 1
 id: altdb
 name: altdb
-summary: Alternative adb server over local network
+summary: Alternative adb server over TCP or guest-to-host vsock
 description: README.md
 license: Apache-2.0
 homepage: https://github.com/Dr-TSNG/altdb
