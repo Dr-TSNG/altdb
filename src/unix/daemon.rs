@@ -404,6 +404,7 @@ impl Daemon {
             &ServiceStart {
                 name: name.clone(),
                 root: self.root,
+                private_pts: self.store.config.private_pts,
                 test: self.test,
                 bind,
             },

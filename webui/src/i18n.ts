@@ -32,6 +32,9 @@ const english = {
   adb_root: 'Allow adb root',
   mdns: 'Enable mDNS',
   mdns_hint: 'Advertise connection and pairing services for automatic discovery',
+  private_pts: 'Private PTY',
+  private_pts_hint:
+    'Give new terminal sessions a separate PTY filesystem; existing sessions keep their setting',
   adb_root_hint:
     'Computers can use root for new services; existing sessions keep their permissions',
   save: 'Save settings',
@@ -106,6 +109,8 @@ export const messages = {
     adb_root: '允许 adb root',
     mdns: '启用 mDNS',
     mdns_hint: '广播连接与配对服务，供电脑自动发现',
+    private_pts: '独立 PTY',
+    private_pts_hint: '新终端会话使用独立的伪终端文件系统；已有会话保持当前设置',
     adb_root_hint: '电脑可让新服务使用 root；现有会话保持原权限',
     save: '保存设置',
     hosts: '已配对电脑',

@@ -15,6 +15,7 @@ type Config = {
   port_mode: 'random' | 'fixed';
   fixed_port: number;
   mdns_enabled: boolean;
+  private_pts: boolean;
   allow_adb_root: boolean;
 };
 type Host = { fingerprint: string; name: string; paired_at: number; last_connected: number | null };
@@ -272,6 +273,7 @@ function populate(config: Config) {
   get<HTMLSelectElement>('port-mode').value = config.port_mode;
   get<HTMLInputElement>('fixed-port').value = String(config.fixed_port);
   get<HTMLInputElement>('mdns-enabled').checked = config.mdns_enabled;
+  get<HTMLInputElement>('private-pts').checked = config.private_pts;
   get<HTMLInputElement>('allow-adb-root').checked = config.allow_adb_root;
   backendFields();
 }
@@ -314,6 +316,7 @@ get('settings').addEventListener('submit', (event) => {
     port_mode: get<HTMLSelectElement>('port-mode').value as Config['port_mode'],
     fixed_port: port,
     mdns_enabled: get<HTMLInputElement>('mdns-enabled').checked,
+    private_pts: get<HTMLInputElement>('private-pts').checked,
     allow_adb_root: get<HTMLInputElement>('allow-adb-root').checked,
   };
   void action({ op: 'configure', config });

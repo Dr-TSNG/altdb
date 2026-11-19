@@ -1,5 +1,5 @@
 use altdb::config::{Control, DATA_DIR};
-use altdb::unix::{daemon, ksu, services, worker};
+use altdb::unix::{daemon, ksu, pty, services, worker};
 use anyhow::{Result, bail, ensure};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
 use std::path::Path;
@@ -35,6 +35,7 @@ fn run() -> Result<()> {
         }
         "worker" => worker::run(),
         "service" => services::run(),
+        "pty" => pty::run(),
         "probe-ksu" => ksu::prevent_escalation(),
         "probe-shell-su" => {
             ensure!(args.len() == 2, "probe mode required");

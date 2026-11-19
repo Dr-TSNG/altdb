@@ -67,6 +67,7 @@ pub enum Request {
 pub struct ServiceStart {
     pub name: String,
     pub root: bool,
+    pub private_pts: bool,
     pub test: bool,
     pub bind: bool,
 }

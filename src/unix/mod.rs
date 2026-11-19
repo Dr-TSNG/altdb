@@ -4,6 +4,7 @@ pub mod ipc;
 pub mod ksu;
 pub mod mdns;
 pub mod network;
+pub mod pty;
 pub mod services;
 pub mod socket;
 pub mod store;

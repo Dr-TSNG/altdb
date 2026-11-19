@@ -2,7 +2,7 @@ pub mod sync;
 use super::{
     environment,
     ipc::{self, ServiceStart},
-    ksu, network,
+    ksu, network, pty,
 };
 use crate::protocol::{self, CHUNK};
 use anyhow::{Result, bail, ensure};
@@ -42,6 +42,16 @@ pub fn run() -> Result<()> {
     ensure!(fds.len() == 1, "service requires one data descriptor");
     let mut stream: UnixStream = fds.remove(0).into();
     drop(bootstrap);
+    let prepared = if start.private_pts && !start.bind && start.name.starts_with("shell") {
+        let args = ShellArgs::parse(&start.name)?;
+        if args.pty {
+            Some(pty::private(start.root, start.test)?)
+        } else {
+            None
+        }
+    } else {
+        None
+    };
     ksu::restrict_service(start.root, start.test)?;
     if start.bind {
         let (fd, spec) = network::reverse_listener(&start.name)?;
@@ -67,7 +77,7 @@ pub fn run() -> Result<()> {
         return relay(stream, socket);
     }
     let args = ShellArgs::parse(&start.name)?;
-    shell(stream, args, start.root, start.test)
+    shell(stream, args, start.root, start.test, prepared)
 }
 
 trait Duplex: Read + Write + Send + 'static {
@@ -270,7 +280,13 @@ fn input(mut socket: UnixStream, mut stdin: File, v2: bool, pty: bool, pid: i32)
     }
 }
 
-fn shell(socket: UnixStream, args: ShellArgs, root: bool, test: bool) -> Result<()> {
+fn shell(
+    socket: UnixStream,
+    args: ShellArgs,
+    root: bool,
+    test: bool,
+    prepared: Option<pty::Pty>,
+) -> Result<()> {
     let shell = if test { "/bin/sh" } else { "/system/bin/sh" };
     let mut command = Command::new(shell);
     let path = if test {
@@ -309,35 +325,17 @@ fn shell(socket: UnixStream, args: ShellArgs, root: bool, test: bool) -> Result<
     if root && std::path::Path::new("/data/adb/ksu/.ksurc").is_file() {
         command.env("ENV", "/data/adb/ksu/.ksurc");
     }
-    let mut master = None;
-    let mut slave = None;
+    let mut terminal = None;
     if args.pty {
-        let (mut m, mut s) = (-1, -1);
-        let ws = libc::winsize {
-            ws_row: 24,
-            ws_col: 80,
-            ws_xpixel: 0,
-            ws_ypixel: 0,
+        let opened = match prepared {
+            Some(terminal) => terminal,
+            None => pty::open()?,
         };
-        ensure!(
-            unsafe { libc::openpty(&mut m, &mut s, std::ptr::null_mut(), std::ptr::null(), &ws) }
-                == 0,
-            "PTY unavailable"
-        );
-        let m = unsafe { OwnedFd::from_raw_fd(m) };
-        let s = unsafe { OwnedFd::from_raw_fd(s) };
-        for fd in [&m, &s] {
-            ensure!(
-                unsafe { libc::fcntl(fd.as_raw_fd(), libc::F_SETFD, libc::FD_CLOEXEC) } == 0,
-                "PTY descriptor protection failed"
-            );
-        }
         command
-            .stdin(Stdio::from(super::duplicate(s.as_raw_fd())?))
-            .stdout(Stdio::from(super::duplicate(s.as_raw_fd())?))
-            .stderr(Stdio::from(super::duplicate(s.as_raw_fd())?));
-        master = Some(m);
-        slave = Some(s);
+            .stdin(Stdio::from(super::duplicate(opened.slave.as_raw_fd())?))
+            .stdout(Stdio::from(super::duplicate(opened.slave.as_raw_fd())?))
+            .stderr(Stdio::from(super::duplicate(opened.slave.as_raw_fd())?));
+        terminal = Some(opened);
     } else {
         command
             .stdin(Stdio::piped())
@@ -366,7 +364,13 @@ fn shell(socket: UnixStream, args: ShellArgs, root: bool, test: bool) -> Result<
     }
     let mut child = command.spawn()?;
     drop(command);
-    drop(slave);
+    let (master, _namespace) = match terminal {
+        Some(terminal) => {
+            drop(terminal.slave);
+            (Some(terminal.master), terminal.namespace)
+        }
+        None => (None, None),
+    };
     let pid = child.id() as i32;
     CHILD.store(pid, Ordering::Relaxed);
     let writer = Arc::new(Mutex::new(socket.try_clone()?));

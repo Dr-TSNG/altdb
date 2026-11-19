@@ -34,6 +34,8 @@ pub struct Config {
     pub fixed_port: u16,
     #[serde(default = "default_mdns_enabled")]
     pub mdns_enabled: bool,
+    #[serde(default)]
+    pub private_pts: bool,
     pub allow_adb_root: bool,
 }
 
@@ -49,6 +51,7 @@ impl Default for Config {
             port_mode: PortMode::Random,
             fixed_port: 5555,
             mdns_enabled: true,
+            private_pts: false,
             allow_adb_root: false,
         }
     }
@@ -115,6 +118,7 @@ mod tests {
         let c = Config::default();
         assert_eq!(c.port(), 0);
         assert!(c.mdns_enabled);
+        assert!(!c.private_pts);
         assert!(!c.allow_adb_root);
         assert!(serde_json::from_str::<Config>(r#"{"enabled":true}"#).is_err());
     }
@@ -133,5 +137,17 @@ mod tests {
             ..Config::default()
         };
         assert!(c.validate().is_err());
+    }
+
+    #[test]
+    fn private_pts_applies_to_new_services_without_changing_endpoints() {
+        let previous = Config::default();
+        let updated = Config {
+            private_pts: true,
+            ..previous.clone()
+        };
+        assert!(!updated.endpoints_changed(&previous));
+        let saved = serde_json::to_string(&updated).unwrap();
+        assert_eq!(serde_json::from_str::<Config>(&saved).unwrap(), updated);
     }
 }

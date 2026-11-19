@@ -51,6 +51,10 @@ ADB TCP 和配对连接启用 TCP_NODELAY；ADB 包头和负载合并后一次�
 
 PTY 的 slave FD 在 spawn 后全部关闭；shell v2 支持 stdin / close-stdin / resize 和 stdout / stderr / exit。原始 socket 到 stdin pipe 使用有界 read/write；不使用会在等网络输入时持有 pipe 锁的 splice 路径。
 
+`private_pts` 默认为 false，由服务创建请求携带，修改只影响新建终端。启用后，服务在降权前启动一次性 PTY 分配进程：创建 mount namespace、隔离挂载传播并以 `newinstance` 挂载 devpts，再按请求的 shell/root 身份分配终端。master、slave 和 namespace FD 通过现有 SCM_RIGHTS 通道返回；分配进程随后退出。服务和 shell 保持原 mount namespace，namespace FD 由服务保留到会话结束，避免私有挂载提前拆解导致 FD 路径变为 `/0`。原始 `/dev/ptmx` 在分配进程的挂载视图中寻找 devpts，沿用平台的节点标签。分配失败会终止该终端请求。
+
+终端读写及 ioctl 使用实际 FD，控制终端通过 `/dev/tty` 访问。私有 slave 的路径只属于分配时的挂载视图，在 shell 的原视图中可能不存在或对应另一终端；按路径重开的程序需要使用已有 FD 或 `/dev/tty`。原始 pipe 服务、文件同步及转发保持原有处理。
+
 SYNC 子进程按 shell/root 权限访问文件。路径最长 1024 字节，DATA 最长 64 KiB；普通 push 写同目录随机临时文件，完整接收后 rename；断线删除临时文件。不支持压缩或设备节点写入。
 
 ## 传输后端
@@ -90,5 +94,6 @@ mDNS 监听按获准接口绑定 IPv4 UDP 5353，发布 `_adb-tls-connect._tcp` 
 - `src/unix/daemon.rs`、`worker.rs`、`ipc.rs`：权限边界、管理和 IPC。
 - `src/unix/transport.rs`：流复用、ACK、reverse。
 - `src/unix/services.rs`、`services/sync.rs`：独立服务、PTY 和 SYNC。
+- `src/unix/pty.rs`：PTY 分配、私有 devpts 和 namespace 生命周期。
 - `src/unix/ksu.rs`、`network.rs`、`mdns.rs`、`store.rs`：平台能力与持久化。
 - `webui/`、`module/`、`scripts/`：本地管理页面、模块脚本、构建和互操作测试。

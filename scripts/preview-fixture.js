@@ -10,6 +10,7 @@ const fixture = {
         port_mode: 'random',
         fixed_port: 5555,
         mdns_enabled: true,
+        private_pts: false,
         allow_adb_root: false,
     },
     endpoints: ['192.168.31.24:37219'],

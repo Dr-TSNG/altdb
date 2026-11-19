@@ -47,6 +47,7 @@ Use the WebUI to configure:
 - **Connection port (TCP):** Random by default, or a fixed port from `1024–65535`. An occupied fixed port is reported as an error. vsock always uses port `5555`.
 - **Enable mDNS (TCP):** On by default. Advertises connection and pairing services for automatic discovery. When disabled, use the commands in the WebUI to pair and connect manually. Changing this setting restarts TCP sessions. The port and mDNS controls are hidden for vsock; their saved values apply when switching back to TCP.
 - **Allow adb root:** Off by default. When enabled, `adb root` selects root permissions for new services across all connections; `adb unroot` selects shell permissions. TLS connections stay open, and running services keep their existing permissions. A service restart restores shell mode.
+- **Private PTY:** Off by default. New terminal sessions allocate their PTY in a separate devpts instance while the shell keeps its original mount namespace. Changing the setting affects new terminals only. Use existing terminal descriptors or `/dev/tty` to reopen the terminal; the pathname returned by `tty` may be absent or refer to another terminal in the shell's mount view.
 - **Paired computers:** Revoking a computer disconnects it immediately. It must pair again to reconnect.
 - **Language:** Follows the system by default. A manual language choice is saved on the device.
 
