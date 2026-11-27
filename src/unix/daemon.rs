@@ -131,6 +131,7 @@ impl Daemon {
             "connections": self.transports.len(),
             "endpoints": endpoints,
             "pairing": pairing,
+            "pairing_required": self.store.config.backend == Backend::Tcp,
         })
     }
 
@@ -263,6 +264,10 @@ impl Daemon {
                 return self.control(Control::Configure { config });
             }
             Control::PairStart => {
+                ensure!(
+                    self.store.config.backend == Backend::Tcp,
+                    "The vsock host connects without pairing"
+                );
                 ensure!(self.state == "running", "Service is not running");
                 ensure!(
                     self.store.hosts.len() < config::MAX_HOSTS,
@@ -323,6 +328,10 @@ impl Daemon {
 
             Control::Revoke { fingerprint } => {
                 self.store.revoke(&fingerprint)?;
+                // Pairing records authorize TCP sessions only.
+                if self.store.config.backend == Backend::Vsock {
+                    return Ok(self.status());
+                }
                 let ids: Vec<_> = self
                     .transports
                     .iter()
@@ -460,9 +469,14 @@ impl Daemon {
                         && !self.transports.contains_key(&transport),
                     "connection limit reached"
                 );
-                self.store.connected(&fingerprint)?;
+                match self.store.config.backend {
+                    Backend::Tcp => {
+                        self.store.connected(&fingerprint)?;
+                        self.log("Paired host connected");
+                    }
+                    Backend::Vsock => self.log("VM host connected"),
+                }
                 self.transports.insert(transport, fingerprint);
-                self.log("Paired host connected");
             }
             Request::Disconnected { transport } => self.disconnect(transport),
             Request::Spawn { transport, name } => {

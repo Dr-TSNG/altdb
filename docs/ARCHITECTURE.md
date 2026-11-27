@@ -36,10 +36,10 @@ root 服务本身具有设备 root 权限，能修改系统与模块；不把允
 - 使用 BoringSSL SPAKE2，HKDF-SHA256、AES-128-GCM；nonce 为 12 字节，其中前 8 字节是独立的 LE 收发计数。
 - PeerInfo 为 8192 字节：电脑发送 Android RSA 公钥；设备返回持久 GUID。
 - 验证主机 PeerInfo 并成功保存授权后，才发送设备 PeerInfo 作为成功响应；保存失败不会向电脑确认配对。
-- 连接从 CNXN / STLS 升级至 TLS 1.3，客户端证书公钥的 SHA256(SPKI) 必须存在于授权记录。没有旧式 AUTH/明文回退；关闭 session cache / tickets。
+- 连接从 CNXN / STLS 升级至 TLS 1.3，客户端必须出示证书并证明持有私钥。TCP 核对授权表中的 SHA256(SPKI)，vsock 使用内核提供的宿主 CID 授权。没有旧式 AUTH/明文回退；关闭 session cache / tickets。
 - TLS 握手未完成的连接十秒后被网络主循环关闭；单次配对尝试二十秒，整体窗口五分钟。
 
-授权撤销同时删除磁盘记录、结束 root 管理的该主机会话，并通知网络进程关闭连接。网络侧在认证请求发出前登记主机身份，避免授权更新与认证回执之间的竞态；root 侧每次启动服务再次核对连接授权。
+TCP 授权撤销同时删除磁盘记录、结束 root 管理的该主机会话，并通知网络进程关闭连接。网络侧在认证请求发出前登记主机身份，避免授权更新与认证回执之间的竞态；root 侧每次启动服务再次核对连接授权。
 
 ## 限额与背压
 
@@ -61,7 +61,7 @@ SYNC 子进程按 shell/root 权限访问文件。路径最长 1024 字节，DAT
 
 `Config.backend` 在 `tcp` 与 `vsock` 间选择，缺省为 TCP。`socket.rs` 封装监听与字节流，TLS、SPAKE2 和 ADB 流复用层使用同一套实现。TCP 的 NODELAY、keepalive 与 USER_TIMEOUT 只用于 TCP socket。root 创建监听后通过 SCM_RIGHTS 交给降权 worker；SELinux 对继承的 vsock socket 单独授予收发、accept、选项和关闭权限。
 
-vsock 绑定 CID_ANY，向状态接口报告 `/dev/vsock` 查询到的客体 CID 和实际端口；连接和配对仅接受宿主 CID 2。连接固定使用 5555，临时配对端口使用 VMADDR_PORT_ANY，IPC 与状态保留完整 32 位端口。该后端跳过网卡枚举和 mDNS。TCP 的端口及 mDNS 配置仍持久化，在 vsock 模式下隐藏；改变这些配置不会重建 vsock listener 或 worker。
+vsock 绑定 CID_ANY，向状态接口报告 `/dev/vsock` 查询到的客体 CID 和实际端口；仅接受宿主 CID 2 在端口 5555 建立连接。宿主使用自己的 ADB 密钥直接完成 TLS 握手，配对记录只在 TCP 模式生效。该后端跳过网卡枚举和 mDNS。TCP 的端口及 mDNS 配置仍持久化，在 vsock 模式下隐藏；改变这些配置不会重建 vsock listener 或 worker。
 
 TCP 与 vsock 共用原生调试检查：USB / 无线调试开启，或系统 adbd 仍在运行时，关闭配对、连接、转发和监听；确认调试关闭且 adbd 停止后，才以 shell 权限恢复。设置不可读时的暂停和已运行连接的有限宽限也保持一致。`post-fs-data` 提前启动管理进程和控制接口；首次调试状态尚不能确认时，传输保持暂停。vsock 只在检查通过后跳过网卡发现，直接创建 AF_VSOCK 监听。
 

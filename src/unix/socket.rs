@@ -135,7 +135,7 @@ impl Listener {
     pub fn accept(&self) -> io::Result<Stream> {
         let (socket, peer) = self.socket.accept()?;
         if self.backend == Backend::Vsock && vsock_address(&peer)?.cid != 2 {
-            // Only the VM host may connect, including to the pairing window.
+            // Only the VM host may connect.
             return Err(io::Error::new(
                 io::ErrorKind::PermissionDenied,
                 "vsock peer is not the host",
@@ -164,6 +164,10 @@ impl From<TcpStream> for Stream {
 }
 
 impl Stream {
+    pub fn backend(&self) -> Backend {
+        self.backend
+    }
+
     pub fn nodelay(&self) -> io::Result<()> {
         if self.backend == Backend::Tcp {
             self.socket.set_tcp_nodelay(true)?;

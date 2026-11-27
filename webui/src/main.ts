@@ -185,6 +185,10 @@ function render(status: Status) {
         ? 'connection_hint'
         : 'connection_manual_hint',
   );
+  const vsock = status.config.backend === 'vsock';
+  get('pair-card').hidden = vsock;
+  get('hosts-card').hidden = vsock;
+  get('paired-count').hidden = vsock;
   get('host-count').textContent = String(status.hosts.length);
   commands('endpoints', status.endpoints, 'connect');
   get('pair-panel').hidden = !status.pairing;

@@ -1,4 +1,4 @@
-use crate::unix::socket::Stream;
+use crate::{config::Backend, unix::socket::Stream};
 use anyhow::{Result, bail, ensure};
 use base64::{Engine, engine::general_purpose::STANDARD};
 use serde::{Deserialize, Serialize};
@@ -20,7 +20,7 @@ unsafe extern "C" {
         kl: usize,
         c: *const u8,
         cl: usize,
-        pairing: c_int,
+        pin_peer: c_int,
         allowed: *const u8,
         count: usize,
     ) -> *mut c_void;
@@ -233,6 +233,10 @@ impl Tls {
         // Interactive traffic must not wait for a previous small TCP segment
         // to be acknowledged. This also covers the independent pairing socket.
         socket.nodelay()?;
+        // A vsock stream is only constructed after the listener verifies the host CID.
+        // A pairing stream establishes trust separately with TLS-bound SPAKE2.
+        let pin_peer = !pairing && socket.backend() == Backend::Tcp;
+        let allowed = if pin_peer { allowed } else { &[] };
         let mut keys = vec![];
         for fp in allowed {
             let b = unhex(fp)?;
@@ -245,7 +249,7 @@ impl Tls {
                 identity.key.len(),
                 identity.certificate.as_ptr(),
                 identity.certificate.len(),
-                pairing as c_int,
+                pin_peer as c_int,
                 keys.as_ptr(),
                 allowed.len(),
             )

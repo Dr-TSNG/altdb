@@ -24,7 +24,7 @@ typedef struct {
     SSL *ssl;
     uint8_t *allowed;
     size_t count;
-    int pairing;
+    int pin_peer;
     uint8_t peer[32];
 } altdb_tls;
 
@@ -127,8 +127,8 @@ static int verify_peer(X509_STORE_CTX *store, void *arg) {
     EVP_PKEY_free(key);
     if (!ok)
         return 0;
-    if (t->pairing)
-        return 1; /* Trust is established by TLS-bound SPAKE2. */
+    if (!t->pin_peer)
+        return 1; /* Pairing or a kernel-verified vsock host. TLS still proves key possession. */
     for (size_t i = 0; i < t->count; i++)
         if (!CRYPTO_memcmp(t->peer, t->allowed + 32 * i, 32))
             return 1;
@@ -144,7 +144,7 @@ void altdb_tls_free(altdb_tls *t) {
     OPENSSL_free(t);
 }
 
-altdb_tls *altdb_tls_new(const uint8_t *kp, size_t kl, const uint8_t *cp, size_t cl, int pairing,
+altdb_tls *altdb_tls_new(const uint8_t *kp, size_t kl, const uint8_t *cp, size_t cl, int pin_peer,
                          const uint8_t *allowed, size_t count) {
     if (kl > INT_MAX || cl > INT_MAX || count > 32)
         return NULL;
@@ -154,7 +154,7 @@ altdb_tls *altdb_tls_new(const uint8_t *kp, size_t kl, const uint8_t *cp, size_t
     X509 *cert = NULL;
     if (!t)
         return NULL;
-    t->pairing = pairing;
+    t->pin_peer = pin_peer;
     t->count = count;
     t->allowed = count ? OPENSSL_memdup(allowed, count * 32) : NULL;
     if (count && !t->allowed)
@@ -175,8 +175,8 @@ altdb_tls *altdb_tls_new(const uint8_t *kp, size_t kl, const uint8_t *cp, size_t
     SSL_CTX_set_options(t->ctx, SSL_OP_NO_TICKET);
     SSL_CTX_set_verify(t->ctx, SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT, NULL);
     SSL_CTX_set_cert_verify_callback(t->ctx, verify_peer, t);
-    /* Empty CA list asks adb to offer its default key. The verifier pins its
-     * SPKI; an AOSP-compatible issuer list is installed by altdb_tls_add_ca. */
+    /* Empty CA list asks adb to offer its default key. For paired TCP peers,
+     * altdb_tls_add_ca installs an AOSP-compatible issuer list. */
     t->ssl = SSL_new(t->ctx);
     rb = BIO_new(BIO_s_mem());
     wb = BIO_new(BIO_s_mem());

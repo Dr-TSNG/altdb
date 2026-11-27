@@ -2,7 +2,7 @@ const english = {
   eyebrow: 'DEVICE DEBUGGING',
   backend: 'Backend',
   connection_vsock_hint:
-    'Forward this vsock endpoint to a host loopback TCP port, then use adb pair or adb connect with that local port.',
+    'Forward this endpoint to a host loopback port and use adb connect. The VM host connects without pairing.',
   language: 'Language',
   language_auto: 'System',
   connecting: 'Connecting',
@@ -79,8 +79,7 @@ export const messages = {
   'zh-CN': {
     eyebrow: '设备调试',
     backend: '传输后端',
-    connection_vsock_hint:
-      '将此 vsock 端点转发到宿主回环 TCP 端口，再对该本地端口执行 adb pair 或 adb connect。',
+    connection_vsock_hint: '将此端点转发到宿主回环端口，再执行 adb connect。宿主无需配对。',
     language: '语言',
     language_auto: '跟随系统',
     connecting: '连接中',
@@ -184,6 +183,8 @@ export const backendMessages: Record<string, string> = {
   'Configuration saved': '配置已保存',
   'Host authorization revoked': '主机授权已撤销',
   'Service stopped': '服务已停止',
+  'VM host connected': '虚拟机宿主已连接',
+  'The vsock host connects without pairing': 'vsock 宿主无需配对',
   'Paired host connected': '已配对主机已连接',
   'Host paired successfully': '主机配对成功',
   'Pairing authentication failed': '配对认证失败',

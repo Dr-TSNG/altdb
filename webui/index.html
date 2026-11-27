@@ -44,12 +44,12 @@
         <div class="metrics">
           <span
             ><b id="connections">0</b> <span data-i18n="connections">Active connections</span></span
-          ><span
+          ><span id="paired-count"
             ><b id="host-count">0</b> <span data-i18n="host_count">Paired computers</span></span
           >
         </div>
       </section>
-      <section class="card">
+      <section class="card" id="pair-card">
         <div class="section-title">
           <h2 data-i18n="pair_title">Pair a computer</h2>
           <span id="pair-time" class="muted" data-i18n="pair_manual">Open manually</span>
@@ -144,7 +144,7 @@
           <button id="save" class="primary" type="submit" data-i18n="save">Save settings</button>
         </form>
       </section>
-      <section class="card">
+      <section class="card" id="hosts-card">
         <div class="section-title">
           <h2 data-i18n="hosts">Paired computers</h2>
           <span class="muted" data-i18n="local_auth">Device authorizations</span>

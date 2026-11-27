@@ -7,7 +7,7 @@ System adbd and its existing authorizations are left untouched.
 
 ## Features
 
-- Six-digit pairing codes and TLS-encrypted connections. Paired computers can reconnect without pairing again.
+- TLS-encrypted ADB connections. TCP uses six-digit pairing codes. In vsock mode the VM host can connect with any ADB key, without pairing.
 - Shell access, file transfers, app installation and removal, logs, reboot, and forward/reverse port forwarding.
 - Wi-Fi, hotspots and Ethernet over IPv4. Cellular and VPN interfaces are excluded.
 - Both backends pause while system USB or wireless debugging is enabled, then resume after debugging is disabled and system adbd has stopped. vsock operates independently of Wi-Fi, Ethernet and IP addresses.
@@ -25,7 +25,7 @@ System adbd and its existing authorizations are left untouched.
 
 1. Install the module ZIP in KernelSU Manager. With hot install support it starts immediately; otherwise restart the phone as prompted.
 2. Turn off system USB debugging and wireless debugging.
-3. Open the module WebUI, wait for the service to start, then select **Start pairing**.
+3. Open the module WebUI. For vsock, follow the **vsock** section below. For TCP, wait for the service to start and select **Start pairing**.
 4. Run the commands shown in the WebUI on your computer. Enter the six-digit code when prompted:
 
    ```sh
@@ -48,7 +48,7 @@ Use the WebUI to configure:
 - **Enable mDNS (TCP):** On by default. Advertises connection and pairing services for automatic discovery. When disabled, use the commands in the WebUI to pair and connect manually. Changing this setting restarts TCP sessions. The port and mDNS controls are hidden for vsock; their saved values apply when switching back to TCP.
 - **Allow adb root:** Off by default. When enabled, `adb root` selects root permissions for new services across all connections; `adb unroot` selects shell permissions. TLS connections stay open, and running services keep their existing permissions. A service restart restores shell mode.
 - **Private PTY:** Off by default. New terminal sessions allocate their PTY in a separate devpts instance while the shell keeps its original mount namespace. Changing the setting affects new terminals only. Use existing terminal descriptors or `/dev/tty` to reopen the terminal; the pathname returned by `tty` may be absent or refer to another terminal in the shell's mount view.
-- **Paired computers:** Revoking a computer disconnects it immediately. It must pair again to reconnect.
+- **Paired computers (TCP):** Revoking a computer disconnects it immediately. It must pair again to reconnect.
 - **Language:** Follows the system by default. A manual language choice is saved on the device.
 
 Connections use shell permissions by default. Shell access to `su` follows KernelSU's authorization for shell. Changing the adb root setting in the WebUI disconnects existing sessions. Module upgrades preserve settings and pairing records; uninstalling removes the module's own data. CLI messages are in English.
@@ -61,19 +61,15 @@ After `adb root`, new shells append `/data/adb/ksu/bin` to `PATH`. Interactive s
 
 Select **vsock** in the WebUI or set `"backend":"vsock"` in the configuration. Like TCP, this backend pauses when system USB or wireless debugging is enabled, and resumes only after debugging is disabled and system adbd has stopped. Pausing closes listeners, pairing and sessions. The same checks for unavailable settings and framework restart grace apply to both backends. Wi-Fi changes and IP addresses do not affect vsock listeners or connections.
 
-Connection and pairing listeners use AF_VSOCK and accept the VM host (CID 2). Connections always use port `5555`, regardless of `port_mode` and `fixed_port`. Pairing uses a separate temporary port, which may exceed 65535. Status reports endpoints as `vsock:CID:PORT`. Both listeners retain TLS and the existing host-key authorization flow.
+The AF_VSOCK listener accepts connections from the VM host (CID 2) on port `5555`. ADB uses TLS 1.3 and the client proves possession of its key. Each Mac running an exported VM can use its own ADB key immediately. These connections do not create TCP pairing records.
 
-For a Linux VM host, expose each endpoint on a host loopback TCP port using a vsock bridge, for example:
+SuperAVD supplies the host bridge. To set one up on a Linux VM host, bind it to loopback. Any client that can reach the bridge has the host's ADB access.
 
 ```sh
 socat TCP4-LISTEN:15555,bind=127.0.0.1,reuseaddr,fork VSOCK-CONNECT:GUEST_CID:5555
-# In another terminal, bridge the temporary pairing endpoint:
-socat TCP4-LISTEN:15556,bind=127.0.0.1,reuseaddr,fork VSOCK-CONNECT:GUEST_CID:PAIRING_PORT
-adb pair 127.0.0.1:15556
+# In another terminal:
 adb connect 127.0.0.1:15555
 ```
-
-Use the ports reported by the WebUI or `altdb ctl status`; start pairing before opening its bridge. TLS remains end to end through the bridge. On other hosts, use the virtual machine monitor's vsock forwarding facility.
 
 ## Scope
 

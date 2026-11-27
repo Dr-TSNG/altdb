@@ -1,6 +1,7 @@
 /target/
 /.cache/
 /.idea/
+/.vscode/
 /vendor/boringssl/
 /dist/
 /webui/node_modules/
@@ -11,3 +12,4 @@
 *.log
 __pycache__/
 *.py[cod]
+.DS_Store
